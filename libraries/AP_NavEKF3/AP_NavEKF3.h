@@ -58,6 +58,8 @@ public:
     // requires_position should be true if horizontal position configuration should be checked
     bool pre_arm_check(bool requires_position, char *failure_msg, uint8_t failure_msg_len) const;
 
+    void set_external_wind_estimate(float speed, float direction);
+
     // returns the index of the primary core
     // return -1 if no primary core selected
     int8_t getPrimaryCoreIndex(void) const;

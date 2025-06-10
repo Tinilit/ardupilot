@@ -75,6 +75,8 @@
 #include <AP_Vehicle/AP_Vehicle_config.h>
 
 #include <stdio.h>
+#include <AP_NavEKF3/AP_NavEKF3.h>
+#include <AP_AHRS/AP_AHRS.h>
 
 #if HAL_RCINPUT_WITH_AP_RADIO
 #include <AP_Radio/AP_Radio.h>
@@ -3953,6 +3955,24 @@ void GCS_MAVLINK::handle_message(const mavlink_message_t &msg)
     case MAVLINK_MSG_ID_SETUP_SIGNING:
         handle_setup_signing(msg);
         break;
+
+    case MAVLINK_MSG_ID_WIND: {
+        mavlink_wind_t wind;
+        mavlink_msg_wind_decode(&msg, &wind);
+
+        printf("WIND message received: dir=%.1f, speed=%.2f, speed_z=%.2f\n", 
+           wind.direction, wind.speed, wind.speed_z);
+
+        #if AP_AHRS_EXTERNAL_WIND_ESTIMATE_ENABLED
+            AP::ahrs().set_external_wind_estimate(wind.speed, wind.direction);
+        #endif
+
+        send_text(MAV_SEVERITY_INFO, 
+            "WIND received: dir=%.1f deg, speed=%.2f m/s, vert=%.2f m/s", 
+            wind.direction, wind.speed, wind.speed_z);
+
+        break;
+    }
 
     case MAVLINK_MSG_ID_PARAM_REQUEST_LIST:
     case MAVLINK_MSG_ID_PARAM_SET:

@@ -164,6 +164,13 @@ bool NavEKF3_core::getWind(Vector3f &wind) const
     wind.x = stateStruct.wind_vel.x;
     wind.y = stateStruct.wind_vel.y;
     wind.z = 0.0f; // currently don't estimate this
+
+    if(_have_external_wind)
+    {
+        wind.x = _external_wind.x;
+        wind.y = _external_wind.y;
+    }
+
     return !inhibitWindStates;
 }
 

@@ -826,6 +826,17 @@ void NavEKF3_core::UpdateStrapdownEquationsNED()
 #endif
 }
 
+void NavEKF3_core::set_external_wind(float direction_deg, float speed, float speed_z)
+{
+    float dir_rad = radians(direction_deg);
+    _external_wind.x = cosf(dir_rad) * speed;
+    _external_wind.y = sinf(dir_rad) * speed;
+
+    stateStruct.wind_vel = _external_wind;
+
+    _have_external_wind = true;
+}
+
 /*
  * Propagate PVA solution forward from the fusion time horizon to the current time horizon
  * using simple observer which performs two functions:

@@ -127,6 +127,8 @@ public:
     // Constructor
     NavEKF3_core(class NavEKF3 *_frontend);
 
+    void set_external_wind(float direction_deg, float speed, float speed_z);
+
     // setup this core backend
     bool setup_core(uint8_t _imu_index, uint8_t _core_index);
     
@@ -452,6 +454,9 @@ public:
     const EKFGSF_yaw *get_yawEstimator(void) const { return yawEstimator; }
 
 private:
+    bool _have_external_wind = false;
+    Vector2F _external_wind;
+
     EKFGSF_yaw *yawEstimator;
     AP_DAL &dal;
 

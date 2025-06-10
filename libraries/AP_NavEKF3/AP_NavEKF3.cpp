@@ -1150,6 +1150,14 @@ bool NavEKF3::pre_arm_check(bool requires_position, char *failure_msg, uint8_t f
     return true;
 }
 
+void NavEKF3::set_external_wind_estimate(float speed, float direction){
+    // float dir_rad = radians(direction);
+    // float wind_x = cosf(dir_rad) * speed;
+    // float wind_y = sinf(dir_rad) * speed;
+
+    core->set_external_wind(direction,speed,0.0);
+}
+
 // returns the index of the primary core
 // return -1 if no primary core selected
 int8_t NavEKF3::getPrimaryCoreIndex(void) const
