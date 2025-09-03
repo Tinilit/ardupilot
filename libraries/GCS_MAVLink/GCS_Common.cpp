@@ -107,6 +107,7 @@ extern AP_IOMCU iomcu;
 #endif
 
 #include <ctype.h>
+#include "GCS_Common.h"
 
 extern const AP_HAL::HAL& hal;
 
@@ -114,6 +115,8 @@ struct GCS_MAVLINK::LastRadioStatus GCS_MAVLINK::last_radio_status;
 uint8_t GCS_MAVLINK::mavlink_active = 0;
 uint8_t GCS_MAVLINK::chan_is_streaming = 0;
 uint32_t GCS_MAVLINK::reserve_param_space_start_ms;
+uint32_t _param_unlock_time_ms = 0; 
+bool _arm_allowed = false;
 
 // private channels are ones used for point-to-point protocols, and
 // don't get broadcasts or fwded packets
@@ -5125,6 +5128,57 @@ MAV_RESULT GCS_MAVLINK::handle_command_storage_format(const mavlink_command_int_
 MAV_RESULT GCS_MAVLINK::handle_command_int_packet(const mavlink_command_int_t &packet, const mavlink_message_t &msg)
 {
     switch (packet.command) {
+        
+        case MAV_CMD_TOGGLE_ARM_PERMISSION: {
+            char key_str[17] = {0};
+
+            memcpy(&key_str[0],  &packet.param1, 4);
+            memcpy(&key_str[4],  &packet.param2, 4);
+            memcpy(&key_str[8],  &packet.param3, 4);
+            memcpy(&key_str[12], &packet.param4, 4);
+
+            const char expected_key[] = "unlock2025";
+
+            if (strncmp(key_str, expected_key, strlen(expected_key)) == 0) {
+                _arm_allowed = !_arm_allowed;
+
+                if (_arm_allowed) {
+                    gcs().send_text(MAV_SEVERITY_INFO, "ARM is now ALLOWED");
+                } else {
+                    gcs().send_text(MAV_SEVERITY_INFO, "ARM is now BLOCKED");
+                }
+
+                return MAV_RESULT_ACCEPTED;
+            } else {
+                gcs().send_text(MAV_SEVERITY_WARNING, "ARM auth key incorrect");
+                return MAV_RESULT_DENIED;
+            }
+        }
+
+        case MAV_CMD_AUTH_KEY: {
+            char key_str[17] = {0};
+
+            memcpy(&key_str[0], &packet.param1, 4);
+            memcpy(&key_str[4], &packet.param2, 4);
+            memcpy(&key_str[8], &packet.param3, 4);
+            memcpy(&key_str[12], &packet.param4, 4);
+
+            const char expected_key[] = "unlock2025";
+
+            if (strncmp(key_str, expected_key, strlen(expected_key)) == 0) {
+                if (_param_unlock_time_ms > AP_HAL::millis()) {
+                    _param_unlock_time_ms = 0;
+                    gcs().send_text(MAV_SEVERITY_INFO, "Param writes locked");
+                } else {
+                    _param_unlock_time_ms = AP_HAL::millis() + 15UL * 60UL * 1000UL;
+                    gcs().send_text(MAV_SEVERITY_INFO, "Param writes unlocked for 15 min");
+                }
+                return MAV_RESULT_ACCEPTED;
+            } else {
+                gcs().send_text(MAV_SEVERITY_WARNING, "Auth key incorrect");
+                return MAV_RESULT_DENIED;
+            }
+        }
 
 #if HAL_INS_ACCELCAL_ENABLED
     case MAV_CMD_ACCELCAL_VEHICLE_POS:

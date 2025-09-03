@@ -24,8 +24,10 @@
 #include "GCS.h"
 #include <AP_Logger/AP_Logger.h>
 #include <AP_BoardConfig/AP_BoardConfig.h>
+#include <AP_Param/AP_Param.h>
 
 extern const AP_HAL::HAL& hal;
+extern uint32_t _param_unlock_time_ms;
 
 // queue of pending parameter requests and replies
 ObjectBuffer<GCS_MAVLINK::pending_param_request> GCS_MAVLINK::param_requests(20);
@@ -262,6 +264,11 @@ void GCS_MAVLINK::handle_param_request_read(const mavlink_message_t &msg)
 
 void GCS_MAVLINK::handle_param_set(const mavlink_message_t &msg)
 {
+    if (AP_HAL::millis() > _param_unlock_time_ms) {
+        gcs().send_text(MAV_SEVERITY_WARNING, "Param write blocked (auth required)");
+        return;
+    }
+
     mavlink_param_set_t packet;
     mavlink_msg_param_set_decode(&msg, &packet);
     enum ap_var_type var_type;

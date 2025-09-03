@@ -6,6 +6,13 @@
  */
 
 const AP_Param::Info Plane::var_info[] = {
+
+    // @Param: READONLY_ENABLE
+    // @DisplayName: Preventing users from changing params via mavlink
+    // @Description: Preventing users from changing params via mavlink
+    // @User: Advanced
+    GSCALAR(readonly_enable, "READONLY_ENABLE", 0),
+
     // @Param: FORMAT_VERSION
     // @DisplayName: Eeprom format version number
     // @Description: This value is incremented when changes are made to the eeprom format

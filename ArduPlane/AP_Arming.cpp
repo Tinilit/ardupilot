@@ -5,6 +5,7 @@
 #include "Plane.h"
 
 #include "qautotune.h"
+#include "../libraries/GCS_MAVLink/GCS_Common.h"
 
 constexpr uint32_t AP_ARMING_DELAY_MS = 2000; // delay from arming to start of motor spoolup
 
@@ -46,6 +47,11 @@ bool AP_Arming_Plane::terrain_database_required() const
  */
 bool AP_Arming_Plane::pre_arm_checks(bool display_failure)
 {
+    if (!_arm_allowed) {
+        gcs().send_text(MAV_SEVERITY_CRITICAL, "ARM blocked");
+        return false;
+    }
+    
     if (armed || require == (uint8_t)Required::NO) {
         // if we are already armed or don't need any arming checks
         // then skip the checks
@@ -300,6 +306,11 @@ void AP_Arming_Plane::change_arm_state(void)
 
 bool AP_Arming_Plane::arm(const AP_Arming::Method method, const bool do_arming_checks)
 {
+    if (!_arm_allowed) {
+        gcs().send_text(MAV_SEVERITY_CRITICAL, "ARM blocked");
+        return false;
+    }
+    
     if (!AP_Arming::arm(method, do_arming_checks)) {
         return false;
     }
