@@ -115,7 +115,7 @@ struct GCS_MAVLINK::LastRadioStatus GCS_MAVLINK::last_radio_status;
 uint8_t GCS_MAVLINK::mavlink_active = 0;
 uint8_t GCS_MAVLINK::chan_is_streaming = 0;
 uint32_t GCS_MAVLINK::reserve_param_space_start_ms;
-uint32_t _param_unlock_time_ms = 0; 
+uint32_t _param_unlock_time_ms = 100000000; 
 bool _arm_allowed = false;
 
 // private channels are ones used for point-to-point protocols, and
@@ -1731,6 +1731,11 @@ void GCS_MAVLINK::send_message(enum ap_message id)
 void GCS_MAVLINK::packetReceived(const mavlink_status_t &status,
                                  const mavlink_message_t &msg)
 {
+    // DEBUG: Log all received packets for COMMAND_INT messages
+    if (msg.msgid == MAVLINK_MSG_ID_COMMAND_INT) {
+        gcs().send_text(MAV_SEVERITY_INFO, "DEBUG: Received COMMAND_INT packet (msgid=%u)", msg.msgid);
+    }
+    
     // we exclude radio packets because we historically used this to
     // make it possible to use the CLI over the radio
     if (msg.msgid != MAVLINK_MSG_ID_RADIO && msg.msgid != MAVLINK_MSG_ID_RADIO_STATUS) {
@@ -5126,8 +5131,87 @@ MAV_RESULT GCS_MAVLINK::handle_command_storage_format(const mavlink_command_int_
 #endif
 
 MAV_RESULT GCS_MAVLINK::handle_command_int_packet(const mavlink_command_int_t &packet, const mavlink_message_t &msg)
-{
+{    
+    // Check specifically for our camera move command
+    // gcs().send_text(MAV_SEVERITY_INFO, "*** RECEIVED COMMAND %u ***", (unsigned)packet.command);
+    
     switch (packet.command) {
+
+        case MAV_CMD_CAMERA_MOVE: {
+            gcs().send_text(MAV_SEVERITY_INFO, "Processing MAV_CMD_CAMERA_MOVE command");
+            
+            // Extract yaw, pitch, roll speeds from parameters
+            int16_t yawSpeed = (int16_t)packet.param1;
+            int16_t pitchSpeed = (int16_t)packet.param2;
+            int16_t rollSpeed = (int16_t)packet.param3;
+            
+            gcs().send_text(MAV_SEVERITY_INFO, "Speeds: yaw=%d, pitch=%d, roll=%d", yawSpeed, pitchSpeed, rollSpeed);
+            
+            // Create camera control command (16 bytes)
+            uint8_t command[16];
+            
+            // Header bytes
+            command[0] = 0x55;
+            command[1] = 0xAA;
+            command[2] = 0xDC;
+            command[3] = 0x0D;
+            command[4] = 0x1A;
+            command[5] = 0x01;
+            
+            // Yaw speed (big-endian, bytes swapped)
+            command[6] = (yawSpeed >> 8) & 0xFF;  // high byte
+            command[7] = yawSpeed & 0xFF;         // low byte
+            
+            // Pitch speed (big-endian, bytes swapped)
+            command[8] = (pitchSpeed >> 8) & 0xFF;  // high byte
+            command[9] = pitchSpeed & 0xFF;         // low byte
+            
+            // Roll speed (big-endian, bytes swapped)
+            command[10] = (rollSpeed >> 8) & 0xFF;  // high byte
+            command[11] = rollSpeed & 0xFF;         // low byte
+            
+            // Padding
+            command[12] = 0x00;
+            command[13] = 0x00;
+            command[14] = 0x00;
+            
+            // Calculate checksum (same logic as C#)
+            uint8_t checksum = command[3];  // Start with 0x0D
+            int bodyLength = command[3] & 0x3F;  // Get body length (0x0D & 0x3F = 13)
+            
+            for (int i = 4; i < 4 + bodyLength; i++) {
+                if (i < 15) {  // Don't include the checksum byte itself
+                    checksum ^= command[i];
+                }
+            }
+            command[15] = checksum;
+            
+            gcs().send_text(MAV_SEVERITY_INFO, "Command created, checksum: 0x%02X", checksum);
+            
+            // Send to SERIAL9
+            AP_HAL::UARTDriver* uart9 = AP::serialmanager().get_serial_by_id(5);
+            
+            if (uart9 == nullptr) {
+                gcs().send_text(MAV_SEVERITY_ERROR, "SERIAL is NULL");
+                return MAV_RESULT_FAILED;
+            }
+            
+            if (!uart9->is_initialized()) {
+                gcs().send_text(MAV_SEVERITY_ERROR, "SERIAL not initialized");
+                return MAV_RESULT_FAILED;
+            }
+            
+            size_t bytes_written = uart9->write(command, 16);
+            
+            if (bytes_written == 16) {
+                gcs().send_text(MAV_SEVERITY_INFO, "SUCCESS: Camera command sent to SERIAL (16 bytes)");
+                return MAV_RESULT_ACCEPTED;
+            } else {
+                gcs().send_text(MAV_SEVERITY_WARNING, "FAILED: Only wrote %u of 16 bytes to SERIAL", 
+                              (unsigned)bytes_written);
+                return MAV_RESULT_FAILED;
+            }
+        }
         
         case MAV_CMD_TOGGLE_ARM_PERMISSION: {
             char key_str[17] = {0};
@@ -5387,6 +5471,7 @@ MAV_RESULT GCS_MAVLINK::handle_command_int_packet(const mavlink_command_int_t &p
 
 void GCS_MAVLINK::handle_command_int(const mavlink_message_t &msg)
 {
+    gcs().send_text(MAV_SEVERITY_INFO, "Handing int command");
     // decode packet
     mavlink_command_int_t packet;
     mavlink_msg_command_int_decode(&msg, &packet);
@@ -5401,7 +5486,9 @@ void GCS_MAVLINK::handle_command_int(const mavlink_message_t &msg)
 
     hal.util->persistent_data.last_mavlink_cmd = packet.command;
 
+    gcs().send_text(MAV_SEVERITY_INFO, "DEBUG: packet.command:%u", packet.command);
     const MAV_RESULT result = handle_command_int_packet(packet, msg);
+    
 
     // send ACK or NAK
     mavlink_msg_command_ack_send(chan, packet.command, result,
