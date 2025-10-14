@@ -48,7 +48,7 @@ bool AP_Arming_Plane::terrain_database_required() const
 bool AP_Arming_Plane::pre_arm_checks(bool display_failure)
 {
     if (!_arm_allowed) {
-        gcs().send_text(MAV_SEVERITY_CRITICAL, "ARM blocked");
+        //gcs().send_text(MAV_SEVERITY_CRITICAL, "ARM blocked");
         return false;
     }
     

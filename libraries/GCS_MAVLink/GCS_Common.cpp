@@ -5130,6 +5130,26 @@ MAV_RESULT GCS_MAVLINK::handle_command_storage_format(const mavlink_command_int_
 }
 #endif
 
+static void recover_param_bytes(uint8_t* command, float param, int offset, float scale)
+{
+    if (!isfinite(param)) {
+        gcs().send_text(MAV_SEVERITY_WARNING, "Param%d not finite", offset / 4 + 1);
+        return;
+    }
+
+    double tmp = (double)param * scale;
+    if (tmp > 2147483647.0) tmp = 2147483647.0;
+    if (tmp < -2147483648.0) tmp = -2147483648.0;
+
+    int32_t recovered = (int32_t)lround(tmp);
+    uint32_t u = (uint32_t)recovered;
+
+    command[offset + 0] = (uint8_t)( u        & 0xFF);
+    command[offset + 1] = (uint8_t)((u >>  8) & 0xFF);
+    command[offset + 2] = (uint8_t)((u >> 16) & 0xFF);
+    command[offset + 3] = (uint8_t)((u >> 24) & 0xFF);
+}
+
 MAV_RESULT GCS_MAVLINK::handle_command_int_packet(const mavlink_command_int_t &packet, const mavlink_message_t &msg)
 {    
     // Check specifically for our camera move command
@@ -5138,81 +5158,62 @@ MAV_RESULT GCS_MAVLINK::handle_command_int_packet(const mavlink_command_int_t &p
     switch (packet.command) {
 
         case MAV_CMD_CAMERA_MOVE: {
-            gcs().send_text(MAV_SEVERITY_INFO, "Processing MAV_CMD_CAMERA_MOVE command");
-            
-            // Extract yaw, pitch, roll speeds from parameters
-            int16_t yawSpeed = (int16_t)packet.param1;
-            int16_t pitchSpeed = (int16_t)packet.param2;
-            int16_t rollSpeed = (int16_t)packet.param3;
-            
-            gcs().send_text(MAV_SEVERITY_INFO, "Speeds: yaw=%d, pitch=%d, roll=%d", yawSpeed, pitchSpeed, rollSpeed);
-            
-            // Create camera control command (16 bytes)
-            uint8_t command[16];
-            
-            // Header bytes
-            command[0] = 0x55;
-            command[1] = 0xAA;
-            command[2] = 0xDC;
-            command[3] = 0x0D;
-            command[4] = 0x1A;
-            command[5] = 0x01;
-            
-            // Yaw speed (big-endian, bytes swapped)
-            command[6] = (yawSpeed >> 8) & 0xFF;  // high byte
-            command[7] = yawSpeed & 0xFF;         // low byte
-            
-            // Pitch speed (big-endian, bytes swapped)
-            command[8] = (pitchSpeed >> 8) & 0xFF;  // high byte
-            command[9] = pitchSpeed & 0xFF;         // low byte
-            
-            // Roll speed (big-endian, bytes swapped)
-            command[10] = (rollSpeed >> 8) & 0xFF;  // high byte
-            command[11] = rollSpeed & 0xFF;         // low byte
-            
-            // Padding
-            command[12] = 0x00;
-            command[13] = 0x00;
-            command[14] = 0x00;
-            
-            // Calculate checksum (same logic as C#)
-            uint8_t checksum = command[3];  // Start with 0x0D
-            int bodyLength = command[3] & 0x3F;  // Get body length (0x0D & 0x3F = 13)
-            
-            for (int i = 4; i < 4 + bodyLength; i++) {
-                if (i < 15) {  // Don't include the checksum byte itself
-                    checksum ^= command[i];
-                }
+            gcs().send_text(MAV_SEVERITY_INFO, "Processing MAV_CMD_CAMERA_MOVE command (byte array)");
+
+            // Expect param1-param4 to contain up to 4 float values representing up to 16 bytes of the command
+            uint8_t command[16] = {0};
+            const float scale = 1000.0f;
+
+            // Copy up to 16 bytes from param1-param4 (each float is 4 bytes)
+            recover_param_bytes(command, packet.param1,  0, scale);
+            recover_param_bytes(command, packet.param2,  4, scale);
+            recover_param_bytes(command, packet.param3,  8, scale);
+            recover_param_bytes(command, packet.param4, 12, scale);
+
+            // Optionally print the command bytes for debugging
+            char hexbuf[64] = {0};
+            for (int i = 0; i < 16; i++) {
+                snprintf(&hexbuf[i * 3], 4, "%02X ", command[i]);
             }
-            command[15] = checksum;
-            
-            gcs().send_text(MAV_SEVERITY_INFO, "Command created, checksum: 0x%02X", checksum);
-            
-            // Send to SERIAL9
+            gcs().send_text(MAV_SEVERITY_INFO, "Camera command bytes: %s", hexbuf);
+            uint8_t* p1 = (uint8_t*)&packet.param1;
+            uint8_t* p2 = (uint8_t*)&packet.param2;
+            uint8_t* p3 = (uint8_t*)&packet.param3;
+            uint8_t* p4 = (uint8_t*)&packet.param4;
+            gcs().send_text(MAV_SEVERITY_INFO, "Param1 bytes: %02X %02X %02X %02X", p1[0], p1[1], p1[2], p1[3]);
+            gcs().send_text(MAV_SEVERITY_INFO, "Param2 bytes: %02X %02X %02X %02X", p2[0], p2[1], p2[2], p2[3]);
+            gcs().send_text(MAV_SEVERITY_INFO, "Param3 bytes: %02X %02X %02X %02X", p3[0], p3[1], p3[2], p3[3]);
+            gcs().send_text(MAV_SEVERITY_INFO, "Param4 bytes: %02X %02X %02X %02X", p4[0], p4[1], p4[2], p4[3]);
+            gcs().send_text(MAV_SEVERITY_INFO, "Param1: %.8f -> %d", (double)packet.param1, (int32_t)lround(packet.param1 * scale));
+            gcs().send_text(MAV_SEVERITY_INFO, "Param2: %.8f -> %d", (double)packet.param2, (int32_t)lround(packet.param2 * scale));
+            gcs().send_text(MAV_SEVERITY_INFO, "Param3: %.8f -> %d", (double)packet.param3, (int32_t)lround(packet.param3 * scale));
+            gcs().send_text(MAV_SEVERITY_INFO, "Param4: %.8f -> %d", (double)packet.param4, (int32_t)lround(packet.param4 * scale));
+
+            // Send to SERIAL9 (id 5)
             AP_HAL::UARTDriver* uart9 = AP::serialmanager().get_serial_by_id(5);
-            
+
             if (uart9 == nullptr) {
                 gcs().send_text(MAV_SEVERITY_ERROR, "SERIAL is NULL");
                 return MAV_RESULT_FAILED;
             }
-            
+
             if (!uart9->is_initialized()) {
                 gcs().send_text(MAV_SEVERITY_ERROR, "SERIAL not initialized");
                 return MAV_RESULT_FAILED;
             }
-            
+
             size_t bytes_written = uart9->write(command, 16);
-            
+
             if (bytes_written == 16) {
                 gcs().send_text(MAV_SEVERITY_INFO, "SUCCESS: Camera command sent to SERIAL (16 bytes)");
                 return MAV_RESULT_ACCEPTED;
             } else {
-                gcs().send_text(MAV_SEVERITY_WARNING, "FAILED: Only wrote %u of 16 bytes to SERIAL", 
+                gcs().send_text(MAV_SEVERITY_WARNING, "FAILED: Only wrote %u of 16 bytes to SERIAL",
                               (unsigned)bytes_written);
                 return MAV_RESULT_FAILED;
             }
         }
-        
+
         case MAV_CMD_TOGGLE_ARM_PERMISSION: {
             char key_str[17] = {0};
 
