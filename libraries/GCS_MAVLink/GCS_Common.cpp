@@ -5130,25 +5130,29 @@ MAV_RESULT GCS_MAVLINK::handle_command_storage_format(const mavlink_command_int_
 }
 #endif
 
-static void recover_param_bytes(uint8_t* command, float param, int offset, float scale)
-{
-    if (!isfinite(param)) {
-        gcs().send_text(MAV_SEVERITY_WARNING, "Param%d not finite", offset / 4 + 1);
-        return;
-    }
+// static void recover_param_bytes(uint8_t* command, float param, int offset)
+// {
+//     if (!isfinite(param)) {
+//         gcs().send_text(MAV_SEVERITY_WARNING, "Param%d not finite", offset / 4 + 1);
+//         return;
+//     }
 
-    double tmp = (double)param * scale;
-    if (tmp > 2147483647.0) tmp = 2147483647.0;
-    if (tmp < -2147483648.0) tmp = -2147483648.0;
+//     memcpy(command + offset, &param, 4);
 
-    int32_t recovered = (int32_t)lround(tmp);
-    uint32_t u = (uint32_t)recovered;
+//     // Cast float to uint32 to show hex representation
+//     uint32_t param_hex;
+//     memcpy(&param_hex, &param, 4);
 
-    command[offset + 0] = (uint8_t)( u        & 0xFF);
-    command[offset + 1] = (uint8_t)((u >>  8) & 0xFF);
-    command[offset + 2] = (uint8_t)((u >> 16) & 0xFF);
-    command[offset + 3] = (uint8_t)((u >> 24) & 0xFF);
-}
+//     gcs().send_text(MAV_SEVERITY_INFO,
+//         "Param%d: %.6f (0x%08X) -> bytes: %02X %02X %02X %02X",
+//         offset / 4 + 1,
+//         param,
+//         param_hex,
+//         command[offset + 0],
+//         command[offset + 1],
+//         command[offset + 2],
+//         command[offset + 3]);
+// }
 
 MAV_RESULT GCS_MAVLINK::handle_command_int_packet(const mavlink_command_int_t &packet, const mavlink_message_t &msg)
 {    
@@ -5158,36 +5162,33 @@ MAV_RESULT GCS_MAVLINK::handle_command_int_packet(const mavlink_command_int_t &p
     switch (packet.command) {
 
         case MAV_CMD_CAMERA_MOVE: {
-            gcs().send_text(MAV_SEVERITY_INFO, "Processing MAV_CMD_CAMERA_MOVE command (byte array)");
+            gcs().send_text(MAV_SEVERITY_INFO, "Processing MAV_CMD_CAMERA_MOVE command (COMMAND_INT)");
 
-            // Expect param1-param4 to contain up to 4 float values representing up to 16 bytes of the command
             uint8_t command[16] = {0};
-            const float scale = 1000.0f;
 
-            // Copy up to 16 bytes from param1-param4 (each float is 4 bytes)
-            recover_param_bytes(command, packet.param1,  0, scale);
-            recover_param_bytes(command, packet.param2,  4, scale);
-            recover_param_bytes(command, packet.param3,  8, scale);
-            recover_param_bytes(command, packet.param4, 12, scale);
+            memcpy(command, &packet.x, 4);
+            memcpy(command + 4, &packet.y, 4);
+            uint32_t z_as_uint = (uint32_t)packet.z; 
+            memcpy(command + 8, &z_as_uint, 4);
 
-            // Optionally print the command bytes for debugging
-            char hexbuf[64] = {0};
-            for (int i = 0; i < 16; i++) {
-                snprintf(&hexbuf[i * 3], 4, "%02X ", command[i]);
-            }
-            gcs().send_text(MAV_SEVERITY_INFO, "Camera command bytes: %s", hexbuf);
-            uint8_t* p1 = (uint8_t*)&packet.param1;
-            uint8_t* p2 = (uint8_t*)&packet.param2;
-            uint8_t* p3 = (uint8_t*)&packet.param3;
-            uint8_t* p4 = (uint8_t*)&packet.param4;
-            gcs().send_text(MAV_SEVERITY_INFO, "Param1 bytes: %02X %02X %02X %02X", p1[0], p1[1], p1[2], p1[3]);
-            gcs().send_text(MAV_SEVERITY_INFO, "Param2 bytes: %02X %02X %02X %02X", p2[0], p2[1], p2[2], p2[3]);
-            gcs().send_text(MAV_SEVERITY_INFO, "Param3 bytes: %02X %02X %02X %02X", p3[0], p3[1], p3[2], p3[3]);
-            gcs().send_text(MAV_SEVERITY_INFO, "Param4 bytes: %02X %02X %02X %02X", p4[0], p4[1], p4[2], p4[3]);
-            gcs().send_text(MAV_SEVERITY_INFO, "Param1: %.8f -> %d", (double)packet.param1, (int32_t)lround(packet.param1 * scale));
-            gcs().send_text(MAV_SEVERITY_INFO, "Param2: %.8f -> %d", (double)packet.param2, (int32_t)lround(packet.param2 * scale));
-            gcs().send_text(MAV_SEVERITY_INFO, "Param3: %.8f -> %d", (double)packet.param3, (int32_t)lround(packet.param3 * scale));
-            gcs().send_text(MAV_SEVERITY_INFO, "Param4: %.8f -> %d", (double)packet.param4, (int32_t)lround(packet.param4 * scale));
+            command[12] = (uint8_t)packet.param1;
+            command[13] = (uint8_t)packet.param2;
+            command[14] = (uint8_t)packet.param3;
+            command[15] = (uint8_t)packet.param4;
+
+            gcs().send_text(MAV_SEVERITY_INFO, "CAM_MOVE RAW: x=0x%08X, y=0x%08X, z=0x%08X",
+                            (unsigned)packet.x, (unsigned)packet.y, (unsigned)packet.z);        
+            gcs().send_text(MAV_SEVERITY_INFO, "CAM_MOVE RAW: p1=%.4f, p2=%.4f, p3=%.4f, p4=%.4f",
+                                   (double)packet.param1, (double)packet.param2, (double)packet.param3, (double)packet.param4);
+
+            char output_buf[64];
+            snprintf(output_buf, sizeof(output_buf),
+             "CAM_MOVE BYTES: %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X",
+             command[0], command[1], command[2], command[3], 
+             command[4], command[5], command[6], command[7], 
+             command[8], command[9], command[10], command[11],
+             command[12], command[13], command[14], command[15]);
+            gcs().send_text(MAV_SEVERITY_INFO, "%s", output_buf);
 
             // Send to SERIAL9 (id 5)
             AP_HAL::UARTDriver* uart9 = AP::serialmanager().get_serial_by_id(5);
