@@ -47,10 +47,10 @@ bool AP_Arming_Plane::terrain_database_required() const
  */
 bool AP_Arming_Plane::pre_arm_checks(bool display_failure)
 {
-    if (!_arm_allowed) {
-        //gcs().send_text(MAV_SEVERITY_CRITICAL, "ARM blocked");
-        return false;
-    }
+    // if (!_arm_allowed) {
+    //     //gcs().send_text(MAV_SEVERITY_CRITICAL, "ARM blocked");
+    //     return false;
+    // }
     
     if (armed || require == (uint8_t)Required::NO) {
         // if we are already armed or don't need any arming checks

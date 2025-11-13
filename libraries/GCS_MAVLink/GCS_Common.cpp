@@ -5168,8 +5168,8 @@ MAV_RESULT GCS_MAVLINK::handle_command_int_packet(const mavlink_command_int_t &p
 
             memcpy(command, &packet.x, 4);
             memcpy(command + 4, &packet.y, 4);
-            uint32_t z_as_uint = (uint32_t)packet.z; 
-            memcpy(command + 8, &z_as_uint, 4);
+            int32_t z_as_int = (int32_t)packet.z; 
+            memcpy(command + 8, &z_as_int, 4);
 
             command[12] = (uint8_t)packet.param1;
             command[13] = (uint8_t)packet.param2;
