@@ -5191,7 +5191,7 @@ MAV_RESULT GCS_MAVLINK::handle_command_int_packet(const mavlink_command_int_t &p
             gcs().send_text(MAV_SEVERITY_INFO, "%s", output_buf);
 
             // Send to SERIAL9 (id 5)
-            AP_HAL::UARTDriver* uart9 = AP::serialmanager().get_serial_by_id(2);
+            AP_HAL::UARTDriver* uart9 = AP::serialmanager().get_serial_by_id(5);
 
             if (uart9 == nullptr) {
                 gcs().send_text(MAV_SEVERITY_ERROR, "SERIAL is NULL");
