@@ -264,10 +264,10 @@ void GCS_MAVLINK::handle_param_request_read(const mavlink_message_t &msg)
 
 void GCS_MAVLINK::handle_param_set(const mavlink_message_t &msg)
 {
-    if (AP_HAL::millis() > _param_unlock_time_ms) {
-        gcs().send_text(MAV_SEVERITY_WARNING, "Param write blocked (auth required)");
-        return;
-    }
+    // if (AP_HAL::millis() > _param_unlock_time_ms) {
+    //     gcs().send_text(MAV_SEVERITY_WARNING, "Param write blocked (auth required)");
+    //     return;
+    // }
 
     mavlink_param_set_t packet;
     mavlink_msg_param_set_decode(&msg, &packet);
