@@ -306,10 +306,10 @@ void AP_Arming_Plane::change_arm_state(void)
 
 bool AP_Arming_Plane::arm(const AP_Arming::Method method, const bool do_arming_checks)
 {
-    if (!_arm_allowed) {
-        gcs().send_text(MAV_SEVERITY_CRITICAL, "ARM blocked");
-        return false;
-    }
+    // if (!_arm_allowed) {
+    //     gcs().send_text(MAV_SEVERITY_CRITICAL, "ARM blocked");
+    //     return false;
+    // }
     
     if (!AP_Arming::arm(method, do_arming_checks)) {
         return false;
