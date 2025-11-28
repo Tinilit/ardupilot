@@ -109,6 +109,23 @@ extern AP_IOMCU iomcu;
 #include <ctype.h>
 #include "GCS_Common.h"
 
+struct RfBand {
+    float freq_min_mhz;
+    float freq_max_mhz;
+    float strong_threshold;
+    float alert_threshold;
+};
+
+static const RfBand rf_bands[] = {
+    {   70.0f,   900.0f,  -47.0f,  -43.0f },   // 0 ГГц
+    { 901.0f,  2000.0f,  -50.0f, -45.0f },   // 1.2 ГГц
+    {2001.0f,  3000.0f,  -48.0f,  -42.0f },   // 2.4 ГГц
+    {3000.0f,  4000.0f,  -42.0f, -43.0f },   // 3.2 ГГц
+    {4001.0f,  5000.0f,  -49.0f, -41.0f },   // 4.4 ГГц
+    {5001.0f, 6000.0f,  -49.0f,  -44.0f }    // 5.8 ГГц
+};
+
+
 extern const AP_HAL::HAL& hal;
 
 struct GCS_MAVLINK::LastRadioStatus GCS_MAVLINK::last_radio_status;
@@ -5160,6 +5177,38 @@ MAV_RESULT GCS_MAVLINK::handle_command_int_packet(const mavlink_command_int_t &p
     // gcs().send_text(MAV_SEVERITY_INFO, "*** RECEIVED COMMAND %u ***", (unsigned)packet.command);
     
     switch (packet.command) {
+
+        case MAV_CMD_SIGNAL_ALERT:
+            {
+                const float rf_power_db = packet.param1;
+                const float frequency_mhz = packet.param2;
+
+                const RfBand* band = nullptr;
+
+                for (const auto &b : rf_bands) {
+                    if (frequency_mhz >= b.freq_min_mhz && frequency_mhz < b.freq_max_mhz) {
+                        band = &b;
+                        break;
+                    }
+                }
+
+                if (!band) {
+                    gcs().send_text(MAV_SEVERITY_WARNING,
+                        "Unknown RF band: %.0f MHz", frequency_mhz);
+                    break;
+                }
+
+                if (rf_power_db >= band->alert_threshold) {
+                    gcs().send_text(MAV_SEVERITY_CRITICAL,
+                        "CRIT RF: %.1f dBFS %.0f MHz", rf_power_db, frequency_mhz);
+
+                } else if (rf_power_db >= band->strong_threshold) {
+                    gcs().send_text(MAV_SEVERITY_WARNING,
+                        "WARN RF: %.1f dBFS %.0f MHz", rf_power_db, frequency_mhz);
+                }
+
+                break;
+            }
 
         case MAV_CMD_CAMERA_MOVE: {
             gcs().send_text(MAV_SEVERITY_INFO, "Processing MAV_CMD_CAMERA_MOVE command (COMMAND_INT)");
