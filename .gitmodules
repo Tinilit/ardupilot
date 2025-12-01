@@ -4,9 +4,6 @@
 [submodule "modules/gbenchmark"]
 	path = modules/gbenchmark
 	url = https://github.com/google/benchmark.git
-[submodule "modules/mavlink"]
-	path = modules/mavlink
-	url = https://github.com/ArduPilot/mavlink
 [submodule "gtest"]
 	path = modules/gtest
 	url = https://github.com/ArduPilot/googletest
@@ -42,3 +39,6 @@
 [submodule "modules/lwip"]
 	path = modules/lwip
 	url = https://github.com/ArduPilot/lwip.git
+[submodule "modules/mavlink"]
+	path = modules/mavlink
+	url = https://github.com/Tinilit/mavlink.git
