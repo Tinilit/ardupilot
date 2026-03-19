@@ -1731,12 +1731,7 @@ void GCS_MAVLINK::send_message(enum ap_message id)
 
 void GCS_MAVLINK::packetReceived(const mavlink_status_t &status,
                                  const mavlink_message_t &msg)
-{
-    // DEBUG: Log all received packets for COMMAND_INT messages
-    if (msg.msgid == MAVLINK_MSG_ID_COMMAND_INT) {
-        gcs().send_text(MAV_SEVERITY_INFO, "DEBUG: Received COMMAND_INT packet (msgid=%u)", msg.msgid);
-    }
-    
+{   
     // we exclude radio packets because we historically used this to
     // make it possible to use the CLI over the radio
     if (msg.msgid != MAVLINK_MSG_ID_RADIO && msg.msgid != MAVLINK_MSG_ID_RADIO_STATUS) {
@@ -5158,8 +5153,6 @@ MAV_RESULT GCS_MAVLINK::handle_command_int_packet(const mavlink_command_int_t &p
     switch (packet.command) {
 
         case MAV_CMD_CAMERA_MOVE: {
-            gcs().send_text(MAV_SEVERITY_INFO, "Processing MAV_CMD_CAMERA_MOVE command (COMMAND_INT)");
-
             uint8_t command[16] = {0};
 
             memcpy(command, &packet.x, 4);
@@ -5171,20 +5164,6 @@ MAV_RESULT GCS_MAVLINK::handle_command_int_packet(const mavlink_command_int_t &p
             command[13] = (uint8_t)packet.param2;
             command[14] = (uint8_t)packet.param3;
             command[15] = (uint8_t)packet.param4;
-
-            gcs().send_text(MAV_SEVERITY_INFO, "CAM_MOVE RAW: x=0x%08X, y=0x%08X, z=0x%08X",
-                            (unsigned)packet.x, (unsigned)packet.y, (unsigned)packet.z);        
-            gcs().send_text(MAV_SEVERITY_INFO, "CAM_MOVE RAW: p1=%.4f, p2=%.4f, p3=%.4f, p4=%.4f",
-                                   (double)packet.param1, (double)packet.param2, (double)packet.param3, (double)packet.param4);
-
-            char output_buf[64];
-            snprintf(output_buf, sizeof(output_buf),
-             "CAM_MOVE BYTES: %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X",
-             command[0], command[1], command[2], command[3], 
-             command[4], command[5], command[6], command[7], 
-             command[8], command[9], command[10], command[11],
-             command[12], command[13], command[14], command[15]);
-            gcs().send_text(MAV_SEVERITY_INFO, "%s", output_buf);
 
             // Send to SERIAL9 (id 5)
             AP_HAL::UARTDriver* uart9 = AP::serialmanager().get_serial_by_id(5);
@@ -5202,7 +5181,6 @@ MAV_RESULT GCS_MAVLINK::handle_command_int_packet(const mavlink_command_int_t &p
             size_t bytes_written = uart9->write(command, 16);
 
             if (bytes_written == 16) {
-                gcs().send_text(MAV_SEVERITY_INFO, "SUCCESS: Camera command sent to SERIAL (16 bytes)");
                 return MAV_RESULT_ACCEPTED;
             } else {
                 gcs().send_text(MAV_SEVERITY_WARNING, "FAILED: Only wrote %u of 16 bytes to SERIAL",
@@ -5469,7 +5447,6 @@ MAV_RESULT GCS_MAVLINK::handle_command_int_packet(const mavlink_command_int_t &p
 
 void GCS_MAVLINK::handle_command_int(const mavlink_message_t &msg)
 {
-    gcs().send_text(MAV_SEVERITY_INFO, "Handing int command");
     // decode packet
     mavlink_command_int_t packet;
     mavlink_msg_command_int_decode(&msg, &packet);
@@ -5483,8 +5460,6 @@ void GCS_MAVLINK::handle_command_int(const mavlink_message_t &msg)
 #endif
 
     hal.util->persistent_data.last_mavlink_cmd = packet.command;
-
-    gcs().send_text(MAV_SEVERITY_INFO, "DEBUG: packet.command:%u", packet.command);
     const MAV_RESULT result = handle_command_int_packet(packet, msg);
     
 
