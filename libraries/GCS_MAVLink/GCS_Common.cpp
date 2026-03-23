@@ -49,6 +49,7 @@
 #include <AP_Common/AP_FWVersion.h>
 #include <AP_VisualOdom/AP_VisualOdom.h>
 #include "ViewProCamReader.h"
+#include "ViewProLandingController.h"
 #include <AP_Baro/AP_Baro.h>
 #include <AP_EFI/AP_EFI.h>
 #include <AP_Proximity/AP_Proximity.h>
@@ -2497,9 +2498,11 @@ void GCS::update_receive(void)
     // also update UART pass-thru, if enabled
     update_passthru();
 
-    // update ViewPro camera reader (reads gimbal angles from AP_Mount and logs to DataFlash)
     static ViewProCamReader viewpro_cam;
     viewpro_cam.update();
+
+    static ViewProLandingController vla_ctrl;
+    vla_ctrl.update(viewpro_cam);
 }
 
 void GCS::send_mission_item_reached_message(uint16_t mission_index)
@@ -5186,12 +5189,28 @@ MAV_RESULT GCS_MAVLINK::handle_command_int_packet(const mavlink_command_int_t &p
             size_t bytes_written = uart9->write(command, 16);
 
             if (bytes_written == 16) {
+                gcs().send_text(MAV_SEVERITY_INFO, "Command sent successfully");
                 return MAV_RESULT_ACCEPTED;
             } else {
                 gcs().send_text(MAV_SEVERITY_WARNING, "FAILED: Only wrote %u of 16 bytes to SERIAL",
                               (unsigned)bytes_written);
                 return MAV_RESULT_FAILED;
             }
+        }
+
+        case 65001: {
+            // Visual Landing Approach using ViewPro camera tracking.
+            // param1 > 0 → activate,  param1 = 0 → deactivate
+            ViewProLandingController *vla = ViewProLandingController::get_singleton();
+            if (vla == nullptr) {
+                return MAV_RESULT_TEMPORARILY_REJECTED;
+            }
+            if (packet.param1 > 0.5f) {
+                vla->activate();
+            } else {
+                vla->deactivate();
+            }
+            return MAV_RESULT_ACCEPTED;
         }
 
         case MAV_CMD_TOGGLE_ARM_PERMISSION: {

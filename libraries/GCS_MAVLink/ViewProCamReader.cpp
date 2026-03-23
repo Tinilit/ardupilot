@@ -63,6 +63,7 @@ void ViewProCamReader::init()
     }
     _initialised = true;
     gcs().send_text(MAV_SEVERITY_INFO, "ViewProCam: init OK on SERIAL%d", VIEWPRO_CAM_SERIAL_ID);
+    send_stream_request();
 }
 
 uint8_t ViewProCamReader::get_length_and_frame_count_byte(uint8_t length)
@@ -202,6 +203,13 @@ void ViewProCamReader::process_packet()
     }
 
     _packets_received++;
+
+    if (_packets_received == 1) {
+        gcs().send_text(MAV_SEVERITY_INFO,
+            "ViewProCam: first packet! yaw=%.2f pitch=%.2f roll=%.2f",
+            (double)_yaw_deg, (double)_pitch_deg, (double)_roll_deg);
+        _last_diag_ms = AP_HAL::millis();
+    }
 
     // Roll: 12-bit value at [data_start+23][data_start+24]
     // upper 4 bits from byte[23] low nibble, lower 8 bits from byte[24]

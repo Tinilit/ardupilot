@@ -34,6 +34,17 @@ void ModeQLoiter::run()
 {
     const uint32_t now = AP_HAL::millis();
 
+    const uint32_t vm_timeout_ms = 250;
+    const uint32_t last_vm_ms = quadplane.poscontrol.last_velocity_match_ms;
+    const bool vm_active = (last_vm_ms != 0 && now - last_vm_ms < vm_timeout_ms);
+    if (vm_active) {
+        Vector2f vm_accel_zero;
+        Vector2f vm_speed_cms{quadplane.poscontrol.velocity_match.x * 100,
+                              quadplane.poscontrol.velocity_match.y * 100};
+        quadplane.pos_control->input_vel_accel_xy(vm_speed_cms, vm_accel_zero);
+
+    }
+
 #if AC_PRECLAND_ENABLED
     const uint32_t precland_timeout_ms = 250;
     /*
@@ -154,8 +165,11 @@ void ModeQLoiter::run()
     } else if (plane.control_mode == &plane.mode_guided && quadplane.guided_takeoff) {
         quadplane.set_climb_rate_cms(0);
     } else {
-        // update altitude target and call position controller
-        quadplane.set_climb_rate_cms(quadplane.get_pilot_desired_climb_rate_cms());
+        if (vm_active) {
+            quadplane.set_climb_rate_cms(0.0f);
+        } else {
+            quadplane.set_climb_rate_cms(quadplane.get_pilot_desired_climb_rate_cms());
+        }
     }
     quadplane.run_z_controller();
 
