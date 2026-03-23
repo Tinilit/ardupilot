@@ -48,6 +48,7 @@
 #include <AP_Mount/AP_Mount.h>
 #include <AP_Common/AP_FWVersion.h>
 #include <AP_VisualOdom/AP_VisualOdom.h>
+#include "ViewProCamReader.h"
 #include <AP_Baro/AP_Baro.h>
 #include <AP_EFI/AP_EFI.h>
 #include <AP_Proximity/AP_Proximity.h>
@@ -2495,6 +2496,10 @@ void GCS::update_receive(void)
     }
     // also update UART pass-thru, if enabled
     update_passthru();
+
+    // update ViewPro camera reader (reads gimbal angles from AP_Mount and logs to DataFlash)
+    static ViewProCamReader viewpro_cam;
+    viewpro_cam.update();
 }
 
 void GCS::send_mission_item_reached_message(uint16_t mission_index)
