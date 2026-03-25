@@ -884,12 +884,14 @@ bool Plane::update_target_location(const Location &old_loc, const Location &new_
 }
 
 // allow for velocity matching in VTOL
-bool Plane::set_velocity_match(const Vector2f &velocity)
+bool Plane::set_velocity_match(const Vector2f &velocity, uint8_t source)
 {
 #if HAL_QUADPLANE_ENABLED
     if (quadplane.in_vtol_mode() || quadplane.in_vtol_land_sequence()) {
         quadplane.poscontrol.velocity_match = velocity;
-        quadplane.poscontrol.last_velocity_match_ms = AP_HAL::millis();
+        quadplane.poscontrol.last_velocity_match_ms = velocity.is_zero() ? 0 : AP_HAL::millis();
+        quadplane.poscontrol.velocity_match_source =
+            static_cast<QuadPlane::PosControlState::VelocityMatchSource>(source);
         return true;
     }
 #endif

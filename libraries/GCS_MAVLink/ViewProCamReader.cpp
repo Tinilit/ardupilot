@@ -1,6 +1,6 @@
 /*
   ViewPro camera reader implementation.
-  Reads T1F1B1D1 packets directly from SERIAL5 and logs gimbal yaw/pitch/roll.
+    Reads T1F1B1D1 packets directly from SERIAL5.
 */
 
 #include "ViewProCamReader.h"
@@ -15,7 +15,6 @@
 #define VIEWPRO_HEADER3          0xDC
 #define VIEWPRO_OUTPUT_TO_DEG    (360.0f / 65536.0f)
 #define VIEWPRO_FRAMEID_T1F1B1D1 0x40
-#define VIEWPRO_LOG_INTERVAL_MS  200    // 5 Hz
 #define VIEWPRO_STREAM_REQ_MS    2000   // resend stream request every 2s until data arrives
 
 void ViewProCamReader::update()
@@ -37,21 +36,6 @@ void ViewProCamReader::update()
 
     read_incoming_packets();
 
-    // periodic diagnostic every 5s
-    if (now_ms - _last_diag_ms > 5000) {
-        _last_diag_ms = now_ms;
-        if (_packets_received > 0) {
-            gcs().send_text(MAV_SEVERITY_INFO,
-                "ViewProCam: yaw=%.2f pitch=%.2f roll=%.2f pkts=%u",
-                (double)_yaw_deg, (double)_pitch_deg, (double)_roll_deg,
-                (unsigned)_packets_received);
-        } else {
-            gcs().send_text(MAV_SEVERITY_INFO,
-                "ViewProCam: b=%u pkts=0 (waiting for stream)",
-                (unsigned)_bytes_received);
-        }
-    }
-
     log_angles();
 }
 
@@ -62,7 +46,6 @@ void ViewProCamReader::init()
         return;
     }
     _initialised = true;
-    gcs().send_text(MAV_SEVERITY_INFO, "ViewProCam: init OK on SERIAL%d", VIEWPRO_CAM_SERIAL_ID);
     send_stream_request();
 }
 
@@ -204,13 +187,6 @@ void ViewProCamReader::process_packet()
 
     _packets_received++;
 
-    if (_packets_received == 1) {
-        gcs().send_text(MAV_SEVERITY_INFO,
-            "ViewProCam: first packet! yaw=%.2f pitch=%.2f roll=%.2f",
-            (double)_yaw_deg, (double)_pitch_deg, (double)_roll_deg);
-        _last_diag_ms = AP_HAL::millis();
-    }
-
     // Roll: 12-bit value at [data_start+23][data_start+24]
     // upper 4 bits from byte[23] low nibble, lower 8 bits from byte[24]
     const uint16_t roll_raw =
@@ -239,11 +215,6 @@ void ViewProCamReader::log_angles()
     if (_last_angle_ms == 0) {
         return;
     }
-    const uint32_t now_ms = AP_HAL::millis();
-    if (now_ms - _last_log_ms < VIEWPRO_LOG_INTERVAL_MS) {
-        return;
-    }
-    _last_log_ms = now_ms;
     AP::logger().Write(
         "VCAM", "TimeUS,Yaw,Pitch,Roll", "sddd", "F000", "Qfff",
         AP_HAL::micros64(),

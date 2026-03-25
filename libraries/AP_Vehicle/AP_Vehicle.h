@@ -201,7 +201,8 @@ public:
     virtual void nav_script_time_done(uint16_t id) {}
 
     // allow for VTOL velocity matching of a target
-    virtual bool set_velocity_match(const Vector2f &velocity) { return false; }
+    // source is an opaque uint8_t token supplied by the caller (0 = clear)
+    virtual bool set_velocity_match(const Vector2f &velocity, uint8_t source=0) { return false; }
 
     // returns true if the EKF failsafe has triggered
     virtual bool has_ekf_failsafed() const { return false; }

@@ -5189,7 +5189,6 @@ MAV_RESULT GCS_MAVLINK::handle_command_int_packet(const mavlink_command_int_t &p
             size_t bytes_written = uart9->write(command, 16);
 
             if (bytes_written == 16) {
-                gcs().send_text(MAV_SEVERITY_INFO, "Command sent successfully");
                 return MAV_RESULT_ACCEPTED;
             } else {
                 gcs().send_text(MAV_SEVERITY_WARNING, "FAILED: Only wrote %u of 16 bytes to SERIAL",

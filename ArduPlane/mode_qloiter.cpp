@@ -36,7 +36,9 @@ void ModeQLoiter::run()
 
     const uint32_t vm_timeout_ms = 250;
     const uint32_t last_vm_ms = quadplane.poscontrol.last_velocity_match_ms;
-    const bool vm_active = (last_vm_ms != 0 && now - last_vm_ms < vm_timeout_ms);
+    const bool vm_active = (last_vm_ms != 0 && now - last_vm_ms < vm_timeout_ms
+                            && quadplane.poscontrol.velocity_match_source
+                               == QuadPlane::PosControlState::VelocityMatchSource::VLA);
     if (vm_active) {
         Vector2f vm_accel_zero;
         Vector2f vm_speed_cms{quadplane.poscontrol.velocity_match.x * 100,
@@ -64,8 +66,8 @@ void ModeQLoiter::run()
         }
     }
 
-    // allow for velocity override as well
-    if (last_vel_set_ms != 0 && now - last_vel_set_ms < precland_timeout_ms) {
+    // allow for velocity override as well (only when vm_active block above is not handling it)
+    if (!vm_active && last_vel_set_ms != 0 && now - last_vel_set_ms < precland_timeout_ms) {
         // we have an active landing velocity override
         Vector2f target_accel;
         Vector2f target_speed_xy_cms{quadplane.poscontrol.velocity_match.x*100, quadplane.poscontrol.velocity_match.y*100};
@@ -122,11 +124,18 @@ void ModeQLoiter::run()
     if (!pos_control->is_active_xy()) {
         pos_control->init_xy_controller();
     }
-    loiter_nav->update();
 
-    // nav roll and pitch are controller by loiter controller
-    plane.nav_roll_cd = loiter_nav->get_roll();
-    plane.nav_pitch_cd = loiter_nav->get_pitch();
+    if (vm_active) {
+        // velocity_match is active — skip loiter position hold so the
+        // velocity-only command from input_vel_accel_xy() is honoured.
+        pos_control->update_xy_controller();
+    } else {
+        loiter_nav->update();
+    }
+
+    // nav roll and pitch from pos_control (loiter_nav getters are just wrappers)
+    plane.nav_roll_cd = pos_control->get_roll_cd();
+    plane.nav_pitch_cd = pos_control->get_pitch_cd();
 
     plane.quadplane.assign_tilt_to_fwd_thr();
 
