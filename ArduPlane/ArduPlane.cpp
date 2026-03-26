@@ -898,6 +898,17 @@ bool Plane::set_velocity_match(const Vector2f &velocity, uint8_t source)
     return false;
 }
 
+// command VTOL to yaw toward a desired world heading
+void Plane::set_vtol_heading(float heading_deg)
+{
+#if HAL_QUADPLANE_ENABLED
+    if (quadplane.in_vtol_mode()) {
+        quadplane.poscontrol.heading_match_deg     = heading_deg;
+        quadplane.poscontrol.last_heading_match_ms = AP_HAL::millis();
+    }
+#endif
+}
+
 // allow for override of land descent rate
 bool Plane::set_land_descent_rate(float descent_rate)
 {

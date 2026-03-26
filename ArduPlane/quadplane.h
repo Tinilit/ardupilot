@@ -541,6 +541,8 @@ private:
         VelocityMatchSource velocity_match_source{VelocityMatchSource::NONE};
         Vector2f velocity_match;
         uint32_t last_velocity_match_ms;
+        float    heading_match_deg;
+        uint32_t last_heading_match_ms;
         float target_speed;
         float target_accel;
         uint32_t last_pos_reset_ms;

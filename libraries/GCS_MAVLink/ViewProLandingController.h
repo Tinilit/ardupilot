@@ -26,12 +26,15 @@
 #include <AP_Common/Location.h>
 #include <stdint.h>
 
+class AP_Vehicle;
+
 class ViewProLandingController {
 public:
     ViewProLandingController() { _singleton = this; }
 
     void update(ViewProCamReader &cam);
-    void activate();
+    void activate(float wind_azimuth_deg);
+    void retarget();   // re-acquire target without stopping; keeps wind heading
     void deactivate();
     bool is_active() const { return _state != State::IDLE; }
 
@@ -49,9 +52,13 @@ private:
     uint32_t _last_update_ms    = 0;
     uint32_t _overhead_since_ms = 0;
     uint32_t _align_since_ms    = 0;
-    bool     _target_locked     = false;
-    float    _target_bearing_deg = 0.0f;
-    float    _last_fwd_mps       = 0.0f;  // last commanded ±creep speed m/s, for logging
+    bool     _bearing_locked      = false;
+    float    _target_bearing_deg   = 0.0f;
+    float    _initial_bearing_deg  = 0.0f;  // bearing at lock time
+    float    _initial_yaw_deg      = 0.0f;  // camera yaw at lock time
+    float    _last_fwd_mps         = 0.0f;  // last commanded ±creep speed m/s, for logging
+    float    _into_wind_heading_deg = 0.0f;  // heading to face into wind (azimuth+180)
+    bool     _has_wind_heading      = false;
     uint32_t _last_pitch_gcs_ms  = 0;
     uint32_t _descend_since_ms   = 0;     // first ms when pitch < PITCH_DESCEND_DEG in ALIGN
     uint32_t _land_since_ms      = 0;     // ms when LAND state entered
@@ -79,4 +86,5 @@ private:
     bool switch_to_mode(uint8_t mode);
     void push_guided_waypoint(float target_bearing_deg);
     void set_creep_commands(float target_bearing_deg, float pitch_deg);
+    void command_into_wind_heading(AP_Vehicle *vehicle);
 };

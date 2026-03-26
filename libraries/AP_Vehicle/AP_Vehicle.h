@@ -204,6 +204,9 @@ public:
     // source is an opaque uint8_t token supplied by the caller (0 = clear)
     virtual bool set_velocity_match(const Vector2f &velocity, uint8_t source=0) { return false; }
 
+    // command the VTOL to yaw toward a desired world heading (degrees)
+    virtual void set_vtol_heading(float heading_deg) {}
+
     // returns true if the EKF failsafe has triggered
     virtual bool has_ekf_failsafed() const { return false; }
 
