@@ -73,6 +73,8 @@ private:
     static constexpr float    PITCH_ALIGN_DEG    = -80.0f; // enter ALIGN (QLOITER) below this
     static constexpr float    PITCH_DESCEND_DEG  = -88.0f; // enter LAND (QLAND) below this
     static constexpr float    PITCH_TARGET_DEG   = -90.0f; // ALIGN feedback target
+    static constexpr float    PITCH_LOST_ALIGN_DEG = -35.0f; // ALIGN: target lost above this → deactivate
+    static constexpr float    PITCH_LOST_LAND_DEG  = -85.0f; // LAND: target drifting above this → back to ALIGN
     static constexpr uint32_t UPDATE_MS          = 150;
     static constexpr uint32_t OVERHEAD_HOLD_MS   = 1500;   // ms at pitch<-80 before ALIGN
     static constexpr uint32_t DESCEND_CONFIRM_MS = 1000;   // ms at pitch<-89 before QLAND

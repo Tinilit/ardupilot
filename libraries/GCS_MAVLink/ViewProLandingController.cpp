@@ -30,8 +30,8 @@ void ViewProLandingController::activate(float wind_azimuth_deg)
     _initial_yaw_deg      = 0.0f;
     _last_pitch_gcs_ms    = 0;
 
-    // Into-wind heading = wind azimuth itself (wind blows FROM that direction, so nose points toward it).
-    _into_wind_heading_deg = wrap_360(wind_azimuth_deg);
+    // Into-wind heading: azimuth = where wind blows TO, so nose = azimuth + 180 (face into wind).
+    _into_wind_heading_deg = wrap_360(wind_azimuth_deg + 180.0f);
     _has_wind_heading      = true;
 
     if (AP_Vehicle *vehicle = AP::vehicle()) {
@@ -122,7 +122,21 @@ void ViewProLandingController::update(ViewProCamReader &cam)
             gcs().send_text(MAV_SEVERITY_INFO,
                 "QLAND start, descending");
         }
-
+        if (pitch > PITCH_LOST_LAND_DEG) {
+            if (switch_to_mode(MODE_QLOITER)) {
+                _state            = State::ALIGN;
+                _align_since_ms   = 0;
+                _descend_since_ms = 0;
+                _land_since_ms    = 0;
+                if (AP_Vehicle *vehicle = AP::vehicle()) {
+                    vehicle->set_velocity_match(Vector2f{}, 1);
+                }
+                gcs().send_text(MAV_SEVERITY_WARNING,
+                    "LAND abort: pitch %.1f > %.0f, back to QLOITER",
+                    (double)pitch, (double)PITCH_LOST_LAND_DEG);
+            }
+            return;
+        }
         // Gentle velocity correction only — don’t fight QLAND position hold
         const float pitch_error = pitch - PITCH_TARGET_DEG;
         const float corr_mps    = constrain_float(pitch_error * CREEP_FWD_K * 0.5f,
@@ -145,6 +159,14 @@ void ViewProLandingController::update(ViewProCamReader &cam)
             _align_since_ms = now_ms;
             gcs().send_text(MAV_SEVERITY_INFO,
                 "QLOITER start, aligning");
+        }
+
+        if (pitch > PITCH_LOST_ALIGN_DEG) {
+            gcs().send_text(MAV_SEVERITY_WARNING,
+                "ALIGN abort: pitch %.1f > %.0f, target lost",
+                (double)pitch, (double)PITCH_LOST_ALIGN_DEG);
+            deactivate();
+            return;
         }
 
         if (AP_Vehicle *vehicle = AP::vehicle()) {
