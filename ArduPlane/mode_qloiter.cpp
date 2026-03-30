@@ -179,14 +179,25 @@ void ModeQLoiter::run()
         }
 
         pos_control->land_at_climb_rate_cm(-descent_rate_cms, descent_rate_cms>0);
-        quadplane.check_land_complete();
+        if (quadplane.check_land_complete()) {
+            if (ViewProLandingController *vla = ViewProLandingController::get_singleton()) {
+                vla->land_complete();
+            }
+        }
     } else if (plane.control_mode == &plane.mode_guided && quadplane.guided_takeoff) {
         quadplane.set_climb_rate_cms(0);
     } else {
         if (vm_active) {
             quadplane.set_climb_rate_cms(0.0f);
         } else {
-            quadplane.set_climb_rate_cms(quadplane.get_pilot_desired_climb_rate_cms());
+            // If VLA is active but not sending velocity (e.g. pitch-lost hold),
+            // hold altitude instead of following pilot throttle stick.
+            const ViewProLandingController *vla = ViewProLandingController::get_singleton();
+            if (vla != nullptr && vla->is_active()) {
+                quadplane.set_climb_rate_cms(0.0f);
+            } else {
+                quadplane.set_climb_rate_cms(quadplane.get_pilot_desired_climb_rate_cms());
+            }
         }
     }
     quadplane.run_z_controller();

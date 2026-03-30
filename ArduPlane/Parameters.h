@@ -4,6 +4,7 @@
 
 #include <AP_Common/AP_Common.h>
 #include <AP_Gripper/AP_Gripper.h>
+#include <GCS_MAVLink/ViewProLandingController.h>
 
 // Global parameter class.
 //
@@ -540,6 +541,9 @@ public:
 #if AC_PRECLAND_ENABLED
     AC_PrecLand precland;
 #endif
+
+    // ViewPro visual-landing controller (VLA_* parameters)
+    ViewProLandingController vla_ctrl;
 
     // crow flaps weighting
     AP_Int8 crow_flap_weight_outer;

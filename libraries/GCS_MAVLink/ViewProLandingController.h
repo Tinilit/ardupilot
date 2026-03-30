@@ -24,18 +24,24 @@
 #include "ViewProCamReader.h"
 #include <AP_HAL/AP_HAL.h>
 #include <AP_Common/Location.h>
+#include <AP_Param/AP_Param.h>
 #include <stdint.h>
 
 class AP_Vehicle;
 
 class ViewProLandingController {
 public:
-    ViewProLandingController() { _singleton = this; }
+    ViewProLandingController() {
+        _singleton = this;
+        AP_Param::setup_object_defaults(this, var_info);
+    }
+
+    static const struct AP_Param::GroupInfo var_info[];
 
     void update(ViewProCamReader &cam);
     void activate(float wind_azimuth_deg);
-    void retarget();   // re-acquire target without stopping; keeps wind heading
     void deactivate();
+    void land_complete();
     bool is_active() const { return _state != State::IDLE; }
 
     static ViewProLandingController *get_singleton() { return _singleton; }
@@ -60,21 +66,24 @@ private:
     float    _into_wind_heading_deg = 0.0f;  // heading to face into wind (azimuth+180)
     bool     _has_wind_heading      = false;
     uint32_t _last_pitch_gcs_ms  = 0;
+    bool     _pitch_lost_holding   = false;  // true while pitch > P_HOLD threshold in ALIGN
     uint32_t _descend_since_ms   = 0;     // first ms when pitch < PITCH_DESCEND_DEG in ALIGN
     uint32_t _land_since_ms      = 0;     // ms when LAND state entered
 
     static ViewProLandingController *_singleton;
 
-    // tunables
-    static constexpr float    LOOKAHEAD_M       = 300.0f;  // metres ahead to push WP
-    static constexpr float    CREEP_DESCENT_MPS  =  0.75f; // QLAND descent rate m/s in LAND (increased)
-    static constexpr float    CREEP_FWD_MAX_MPS  =  3.50f; // max ±horiz creep speed m/s in ALIGN (increased)
-    static constexpr float    CREEP_FWD_K        =  0.20f; // pitch err deg → m/s  (10°=2.0 m/s)
-    static constexpr float    PITCH_ALIGN_DEG    = -80.0f; // enter ALIGN (QLOITER) below this
-    static constexpr float    PITCH_DESCEND_DEG  = -88.0f; // enter LAND (QLAND) below this
-    static constexpr float    PITCH_TARGET_DEG   = -90.0f; // ALIGN feedback target
-    static constexpr float    PITCH_LOST_ALIGN_DEG = -35.0f; // ALIGN: target lost above this → deactivate
-    static constexpr float    PITCH_LOST_LAND_DEG  = -85.0f; // LAND: target drifting above this → back to ALIGN
+    // tunables (exposed as VLA_* parameters)
+    AP_Float creep_descent_mps;   // VLA_DSCNT_MPS  default 0.75
+    AP_Float creep_fwd_max_mps;   // VLA_FWD_MAX    default 3.50
+    AP_Float creep_fwd_k;         // VLA_FWD_K      default 0.20
+    AP_Float pitch_align_deg;     // VLA_P_ALIGN    default -80
+    AP_Float pitch_descend_deg;   // VLA_P_DESCND   default -88
+    AP_Float pitch_target_deg;    // VLA_P_TARGET   default -90
+    AP_Float pitch_lost_align_deg;// VLA_P_HOLD     default -35
+    AP_Float pitch_lost_land_deg; // VLA_P_LAND     default -85
+
+    // non-tunable compile-time constants
+    static constexpr float    LOOKAHEAD_M        = 300.0f;
     static constexpr uint32_t UPDATE_MS          = 150;
     static constexpr uint32_t OVERHEAD_HOLD_MS   = 1500;   // ms at pitch<-80 before ALIGN
     static constexpr uint32_t DESCEND_CONFIRM_MS = 1000;   // ms at pitch<-89 before QLAND

@@ -2501,8 +2501,12 @@ void GCS::update_receive(void)
     static ViewProCamReader viewpro_cam;
     viewpro_cam.update();
 
-    static ViewProLandingController vla_ctrl;
-    vla_ctrl.update(viewpro_cam);
+    // Instance lives in ParametersG2 (vla_ctrl) so params are registered at boot.
+    // Retrieve via singleton set in the constructor.
+    ViewProLandingController *vla = ViewProLandingController::get_singleton();
+    if (vla != nullptr) {
+        vla->update(viewpro_cam);
+    }
 }
 
 void GCS::send_mission_item_reached_message(uint16_t mission_index)
@@ -5199,19 +5203,14 @@ MAV_RESULT GCS_MAVLINK::handle_command_int_packet(const mavlink_command_int_t &p
 
         case 65001: {
             // Visual Landing Approach using ViewPro camera tracking.
-            //   param1 > 0, VLA not active  → activate, param2 = wind azimuth (deg, where wind blows FROM)
-            //   param1 > 0, VLA already active → retarget (new land point, keep old wind)
-            //   param1 = 0                  → deactivate
+            //   param1 > 0 → activate (re-activate if already active), param2 = wind azimuth
+            //   param1 = 0 → deactivate
             ViewProLandingController *vla = ViewProLandingController::get_singleton();
             if (vla == nullptr) {
                 return MAV_RESULT_TEMPORARILY_REJECTED;
             }
             if (packet.param1 > 0.5f) {
-                if (vla->is_active()) {
-                    vla->retarget();
-                } else {
-                    vla->activate(packet.param2);
-                }
+                vla->activate(packet.param2);
             } else {
                 vla->deactivate();
             }
