@@ -10,6 +10,8 @@
 #include <AP_Logger/AP_Logger.h>
 #include <GCS_MAVLink/GCS.h>
 
+ViewProCamReader *ViewProCamReader::_singleton = nullptr;
+
 #define VIEWPRO_HEADER1          0x55
 #define VIEWPRO_HEADER2          0xAA
 #define VIEWPRO_HEADER3          0xDC

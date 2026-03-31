@@ -68,12 +68,19 @@ const AP_Param::GroupInfo ViewProLandingController::var_info[] = {
     // @Description: If camera pitch rises above this in LAND, return to ALIGN
     // @Range: -90 -70
     // @Units: deg
-    AP_GROUPINFO("P_LAND",     8, ViewProLandingController, pitch_lost_land_deg,  -85.0f),
+    AP_GROUPINFO("P_LAND",     8, ViewProLandingController, pitch_lost_land_deg,  -75.0f),
+
+    // @Param: Y_THRESH
+    // @DisplayName: VLA yaw correction threshold
+    // @Description: If camera yaw exceeds this in APPROACH, correct aircraft heading to zero camera yaw
+    // @Range: 1 30
+    // @Units: deg
+    AP_GROUPINFO("Y_THRESH",   9, ViewProLandingController, yaw_corr_thresh_deg,   5.0f),
 
     AP_GROUPEND
 };
 
-void ViewProLandingController::activate(float wind_azimuth_deg)
+void ViewProLandingController::activate(float wind_azimuth_deg, ViewProCamReader &cam)
 {
     if (!switch_to_mode(MODE_GUIDED)) {
         gcs().send_text(MAV_SEVERITY_WARNING, "VLA:ERR_MODE");
@@ -85,13 +92,15 @@ void ViewProLandingController::activate(float wind_azimuth_deg)
     _descend_since_ms  = 0;
     _land_since_ms     = 0;
     _last_update_ms       = 0;
-    _bearing_locked       = false;
     _target_bearing_deg   = 0.0f;
-    _initial_bearing_deg  = 0.0f;
-    _initial_yaw_deg      = 0.0f;
     _last_pitch_gcs_ms    = 0;
     _pitch_lost_holding   = false;
 
+    // Record camera yaw at activation and compute initial approach heading.
+    // approach_heading = aircraft_heading + cam_yaw  → world bearing to target.
+    const float hdg_deg = wrap_180(degrees(AP::ahrs().get_yaw()));
+    const float cam_yaw = cam.get_yaw_deg();
+    _approach_heading_deg = wrap_360(hdg_deg + cam_yaw);
     // Into-wind heading: azimuth = where wind blows TO, so nose = azimuth + 180 (face into wind).
     _into_wind_heading_deg = wrap_360(wind_azimuth_deg + 180.0f);
     _has_wind_heading      = true;
@@ -142,16 +151,24 @@ void ViewProLandingController::update(ViewProCamReader &cam)
     const float yaw     = cam.get_yaw_deg();
     const float hdg_deg = wrap_180(degrees(AP::ahrs().get_yaw()));
 
-    // Lock initial bearing and initial camera yaw once.
-    // Then every cycle adjust bearing by the DELTA in camera yaw.
-    // This decouples bearing from aircraft heading changes (no orbit)
-    // while still following real target movement via camera tracker.
-    if (!_bearing_locked) {
-        _initial_bearing_deg = wrap_180(hdg_deg + yaw);
-        _initial_yaw_deg     = yaw;
-        _bearing_locked      = true;
+    // ── APPROACH: fly on locked _approach_heading_deg,
+    //    correct only when cam yaw drifts beyond threshold ──
+    if (_state == State::APPROACH) {
+        if (fabsf(yaw) > yaw_corr_thresh_deg) {
+            _approach_heading_deg = wrap_360(hdg_deg + yaw);
+        }
+        _target_bearing_deg = wrap_180(_approach_heading_deg);
+    } else {
+        // ── ALIGN / LAND: delta-based bearing ──
+        // Lock initial world bearing + camera yaw on the first cycle of ALIGN
+        // (_align_since_ms is still 0 until the ALIGN handler runs below).
+        // Decouples bearing from aircraft heading changes while following target.
+        if (_align_since_ms == 0) {
+            _initial_bearing_deg = wrap_180(hdg_deg + yaw);
+            _initial_yaw_deg     = yaw;
+        }
+        _target_bearing_deg = wrap_180(_initial_bearing_deg + (yaw - _initial_yaw_deg));
     }
-    _target_bearing_deg = wrap_180(_initial_bearing_deg + (yaw - _initial_yaw_deg));
 
     if (now_ms - _last_pitch_gcs_ms >= 3000) {
         _last_pitch_gcs_ms = now_ms;
@@ -253,8 +270,8 @@ void ViewProLandingController::update(ViewProCamReader &cam)
         _overhead_since_ms = 0;
     }
 
-    // push a waypoint 300 m ahead in the locked world bearing every cycle.
-    // This prevents the waypoint from rotating with the aircraft and causing orbiting.
+    // push a waypoint ahead on the locked approach heading every cycle.
+    // The heading was set at activation and gets corrected when cam yaw > threshold.
     if (_state == State::APPROACH) {
         push_guided_waypoint(_target_bearing_deg);
     }

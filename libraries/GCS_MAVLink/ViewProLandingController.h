@@ -39,7 +39,7 @@ public:
     static const struct AP_Param::GroupInfo var_info[];
 
     void update(ViewProCamReader &cam);
-    void activate(float wind_azimuth_deg);
+    void activate(float wind_azimuth_deg, ViewProCamReader &cam);
     void deactivate();
     void land_complete();
     bool is_active() const { return _state != State::IDLE; }
@@ -58,10 +58,9 @@ private:
     uint32_t _last_update_ms    = 0;
     uint32_t _overhead_since_ms = 0;
     uint32_t _align_since_ms    = 0;
-    bool     _bearing_locked      = false;
     float    _target_bearing_deg   = 0.0f;
-    float    _initial_bearing_deg  = 0.0f;  // bearing at lock time
-    float    _initial_yaw_deg      = 0.0f;  // camera yaw at lock time
+    float    _initial_bearing_deg  = 0.0f;  // bearing at lock time (ALIGN/LAND)
+    float    _initial_yaw_deg      = 0.0f;  // camera yaw at lock time (ALIGN/LAND)
     float    _last_fwd_mps         = 0.0f;  // last commanded ±creep speed m/s, for logging
     float    _into_wind_heading_deg = 0.0f;  // heading to face into wind (azimuth+180)
     bool     _has_wind_heading      = false;
@@ -69,6 +68,7 @@ private:
     bool     _pitch_lost_holding   = false;  // true while pitch > P_HOLD threshold in ALIGN
     uint32_t _descend_since_ms   = 0;     // first ms when pitch < PITCH_DESCEND_DEG in ALIGN
     uint32_t _land_since_ms      = 0;     // ms when LAND state entered
+    float    _approach_heading_deg = 0.0f;  // locked heading for APPROACH (world bearing to target)
 
     static ViewProLandingController *_singleton;
 
@@ -81,9 +81,10 @@ private:
     AP_Float pitch_target_deg;    // VLA_P_TARGET   default -90
     AP_Float pitch_lost_align_deg;// VLA_P_HOLD     default -35
     AP_Float pitch_lost_land_deg; // VLA_P_LAND     default -85
+    AP_Float yaw_corr_thresh_deg; // VLA_Y_THRESH   default 5.0
 
     // non-tunable compile-time constants
-    static constexpr float    LOOKAHEAD_M        = 300.0f;
+    static constexpr float    LOOKAHEAD_M        = 5000.0f;
     static constexpr uint32_t UPDATE_MS          = 150;
     static constexpr uint32_t OVERHEAD_HOLD_MS   = 1500;   // ms at pitch<-80 before ALIGN
     static constexpr uint32_t DESCEND_CONFIRM_MS = 1000;   // ms at pitch<-89 before QLAND

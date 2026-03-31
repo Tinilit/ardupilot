@@ -5210,7 +5210,11 @@ MAV_RESULT GCS_MAVLINK::handle_command_int_packet(const mavlink_command_int_t &p
                 return MAV_RESULT_TEMPORARILY_REJECTED;
             }
             if (packet.param1 > 0.5f) {
-                vla->activate(packet.param2);
+                ViewProCamReader *cam = ViewProCamReader::get_singleton();
+                if (cam == nullptr) {
+                    return MAV_RESULT_TEMPORARILY_REJECTED;
+                }
+                vla->activate(packet.param2, *cam);
             } else {
                 vla->deactivate();
             }

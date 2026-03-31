@@ -13,11 +13,14 @@
 
 class ViewProCamReader {
 public:
+    ViewProCamReader() { _singleton = this; }
     void update();
 
     float get_yaw_deg()   const { return _yaw_deg; }
     float get_pitch_deg() const { return _pitch_deg; }
     float get_roll_deg()  const { return _roll_deg; }
+
+    static ViewProCamReader *get_singleton() { return _singleton; }
 
 private:
     void init();
@@ -58,4 +61,6 @@ private:
     uint32_t _packets_received  = 0;
     uint32_t _bytes_received    = 0;
     uint8_t  _frame_counter     = 0;
+
+    static ViewProCamReader *_singleton;
 };
