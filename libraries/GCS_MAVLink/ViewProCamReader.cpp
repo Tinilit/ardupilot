@@ -1,6 +1,6 @@
 /*
   ViewPro camera reader implementation.
-    Reads T1F1B1D1 packets directly from SERIAL5.
+    Reads T1F1B1D1 packets directly from SERIAL2.
 */
 
 #include "ViewProCamReader.h"
@@ -45,9 +45,11 @@ void ViewProCamReader::init()
 {
     _uart = AP::serialmanager().get_serial_by_id(VIEWPRO_CAM_SERIAL_ID);
     if (_uart == nullptr) {
+        gcs().send_text(MAV_SEVERITY_CRITICAL, "ViewProCam: SERIAL%d not found", VIEWPRO_CAM_SERIAL_ID);
         return;
     }
     _initialised = true;
+    gcs().send_text(MAV_SEVERITY_INFO, "ViewProCam: init OK on SERIAL id %d", VIEWPRO_CAM_SERIAL_ID);
     send_stream_request();
 }
 

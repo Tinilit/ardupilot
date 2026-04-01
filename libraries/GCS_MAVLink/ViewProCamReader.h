@@ -8,7 +8,7 @@
 #include <AP_HAL/AP_HAL.h>
 #include <stdint.h>
 
-#define VIEWPRO_CAM_SERIAL_ID     5
+#define VIEWPRO_CAM_SERIAL_ID     2
 #define VIEWPRO_CAM_PACKETLEN_MAX 63
 
 class ViewProCamReader {

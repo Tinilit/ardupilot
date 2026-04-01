@@ -4362,7 +4362,7 @@ void GCS_MAVLINK::send_banner()
     // mark the firmware version in the tlog
     const AP_FWVersion &fwver = AP::fwversion();
 
-    send_text(MAV_SEVERITY_INFO, "%s", fwver.fw_string);
+    send_text(MAV_SEVERITY_INFO, "%s ANT GDT 1.0", fwver.fw_string);
 
     if (fwver.middleware_name && fwver.os_name) {
         send_text(MAV_SEVERITY_INFO, "%s: %s %s: %s",
@@ -5177,20 +5177,20 @@ MAV_RESULT GCS_MAVLINK::handle_command_int_packet(const mavlink_command_int_t &p
             command[14] = (uint8_t)packet.param3;
             command[15] = (uint8_t)packet.param4;
 
-            // Send to SERIAL9 (id 5)
-            AP_HAL::UARTDriver* uart9 = AP::serialmanager().get_serial_by_id(5);
+            // Send to SERIAL2 (id 2)
+            AP_HAL::UARTDriver* uart2 = AP::serialmanager().get_serial_by_id(2);
 
-            if (uart9 == nullptr) {
+            if (uart2 == nullptr) {
                 gcs().send_text(MAV_SEVERITY_ERROR, "SERIAL is NULL");
                 return MAV_RESULT_FAILED;
             }
 
-            if (!uart9->is_initialized()) {
+            if (!uart2->is_initialized()) {
                 gcs().send_text(MAV_SEVERITY_ERROR, "SERIAL not initialized");
                 return MAV_RESULT_FAILED;
             }
 
-            size_t bytes_written = uart9->write(command, 16);
+            size_t bytes_written = uart2->write(command, 16);
 
             if (bytes_written == 16) {
                 return MAV_RESULT_ACCEPTED;
