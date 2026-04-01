@@ -62,6 +62,10 @@ bool ViewProCamReader::send_packet(const uint8_t *databuff, uint8_t databuff_len
     if (_uart == nullptr) {
         return false;
     }
+    // 5 bytes overhead: header(3) + length(1) + crc(1); buf is 63 bytes
+    if (databuff_len > 58) {
+        return false;
+    }
     if (_uart->txspace() < (uint16_t)(5 + databuff_len)) {
         return false;
     }

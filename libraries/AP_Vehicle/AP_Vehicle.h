@@ -206,6 +206,7 @@ public:
 
     // command the VTOL to yaw toward a desired world heading (degrees)
     virtual void set_vtol_heading(float heading_deg) {}
+    virtual void clear_vtol_heading() {}
 
     // returns true if the EKF failsafe has triggered
     virtual bool has_ekf_failsafed() const { return false; }

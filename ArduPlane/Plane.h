@@ -1264,6 +1264,7 @@ public:
     bool update_target_location(const Location &old_loc, const Location &new_loc) override;
     bool set_velocity_match(const Vector2f &velocity, uint8_t source=0) override;
     void set_vtol_heading(float heading_deg) override;
+    void clear_vtol_heading() override;
 
     // allow for landing descent rate to be overridden by a script, may be -ve to climb
     bool set_land_descent_rate(float descent_rate) override;

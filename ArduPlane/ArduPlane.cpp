@@ -909,6 +909,14 @@ void Plane::set_vtol_heading(float heading_deg)
 #endif
 }
 
+// clear any explicit VTOL heading target set by VLA
+void Plane::clear_vtol_heading()
+{
+#if HAL_QUADPLANE_ENABLED
+    quadplane.poscontrol.last_heading_match_ms = 0;
+#endif
+}
+
 // allow for override of land descent rate
 bool Plane::set_land_descent_rate(float descent_rate)
 {

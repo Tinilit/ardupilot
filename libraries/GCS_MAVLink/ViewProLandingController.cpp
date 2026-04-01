@@ -115,6 +115,7 @@ void ViewProLandingController::deactivate()
 {
     if (AP_Vehicle *vehicle = AP::vehicle()) {
         vehicle->set_velocity_match(Vector2f{});
+        vehicle->clear_vtol_heading();
     }
     _last_pitch_gcs_ms = 0;
     _state = State::IDLE;
@@ -142,6 +143,15 @@ void ViewProLandingController::update(ViewProCamReader &cam)
     }
 
     const uint32_t now_ms = AP_HAL::millis();
+
+    // Safety: if camera data is stale (>1 s), abort VLA.
+    const uint32_t cam_age_ms = now_ms - cam.last_angle_ms();
+    if (cam.last_angle_ms() == 0 || cam_age_ms > 1000) {
+        gcs().send_text(MAV_SEVERITY_CRITICAL, "VLA:CAM_LOST (%u ms)", (unsigned)cam_age_ms);
+        deactivate();
+        return;
+    }
+
     if (now_ms - _last_update_ms < UPDATE_MS) {
         return;
     }

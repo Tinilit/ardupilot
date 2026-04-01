@@ -5209,6 +5209,11 @@ MAV_RESULT GCS_MAVLINK::handle_command_int_packet(const mavlink_command_int_t &p
             if (vla == nullptr) {
                 return MAV_RESULT_TEMPORARILY_REJECTED;
             }
+            // Require the vehicle to be armed before activating VLA
+            if (packet.param1 > 0.5f && !hal.util->get_soft_armed()) {
+                gcs().send_text(MAV_SEVERITY_WARNING, "VLA:REJECTED not armed");
+                return MAV_RESULT_DENIED;
+            }
             if (packet.param1 > 0.5f) {
                 ViewProCamReader *cam = ViewProCamReader::get_singleton();
                 if (cam == nullptr) {

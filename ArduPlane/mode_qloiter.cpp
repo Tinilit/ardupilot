@@ -143,22 +143,30 @@ void ModeQLoiter::run()
         pos_control->set_externally_limited_xy();
     }
 
-    // Heading match: proportional yaw rate to point nose toward desired world heading.
-    float heading_yaw_rate_cds = 0.0f;
-    if (quadplane.poscontrol.last_heading_match_ms != 0 &&
-        now - quadplane.poscontrol.last_heading_match_ms < 500U) {
-        const float hdg_err = wrap_180(quadplane.poscontrol.heading_match_deg -
-                                       degrees(ahrs.get_yaw()));
-        heading_yaw_rate_cds = constrain_float(hdg_err * 300.0f, -4500.0f, 4500.0f);
-    }
-
     // Pilot input, use yaw rate time constant
     quadplane.set_pilot_yaw_rate_time_constant();
 
-    // call attitude controller with conservative smoothing gain of 4.0f
-    attitude_control->input_euler_angle_roll_pitch_euler_rate_yaw(plane.nav_roll_cd,
-                                                                  plane.nav_pitch_cd,
-                                                                  quadplane.get_desired_yaw_rate_cds() + heading_yaw_rate_cds);
+    // Check if VLA has an explicit heading target (into-wind heading).
+    const bool has_heading_target =
+        (quadplane.poscontrol.last_heading_match_ms != 0 &&
+         now - quadplane.poscontrol.last_heading_match_ms < 500U);
+
+    if (has_heading_target) {
+        // Use absolute angle control — the attitude controller's internal
+        // sqrt-controller + PID handles smooth convergence without overshoot.
+        // Weathervane is skipped (explicit heading takes priority).
+        attitude_control->input_euler_angle_roll_pitch_yaw(
+            plane.nav_roll_cd,
+            plane.nav_pitch_cd,
+            quadplane.poscontrol.heading_match_deg * 100.0f,
+            true);
+    } else {
+        // Normal yaw rate control with weathervane and pilot input
+        attitude_control->input_euler_angle_roll_pitch_euler_rate_yaw(
+            plane.nav_roll_cd,
+            plane.nav_pitch_cd,
+            quadplane.get_desired_yaw_rate_cds());
+    }
 
     if (plane.control_mode == &plane.mode_qland) {
         if (poscontrol.get_state() < QuadPlane::QPOS_LAND_FINAL && quadplane.check_land_final()) {

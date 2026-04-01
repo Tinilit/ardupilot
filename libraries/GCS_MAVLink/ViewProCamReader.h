@@ -19,6 +19,7 @@ public:
     float get_yaw_deg()   const { return _yaw_deg; }
     float get_pitch_deg() const { return _pitch_deg; }
     float get_roll_deg()  const { return _roll_deg; }
+    uint32_t last_angle_ms() const { return _last_angle_ms; }
 
     static ViewProCamReader *get_singleton() { return _singleton; }
 
