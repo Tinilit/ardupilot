@@ -1444,6 +1444,67 @@ void GCS_MAVLINK_InProgress::check_tasks()
 
 void GCS_MAVLINK::update_send()
 {
+    // inject any pending PARAM_EXT_SET before telemetry fills the buffer
+    if (_pending_param_ext_set.valid) {
+        if (HAVE_PAYLOAD_SPACE(chan, PARAM_EXT_SET)) {
+            mavlink_msg_param_ext_set_send(
+                chan,
+                _pending_param_ext_set.target_system,
+                _pending_param_ext_set.target_component,
+                _pending_param_ext_set.param_id,
+                _pending_param_ext_set.param_value,
+                (MAV_PARAM_EXT_TYPE)_pending_param_ext_set.param_type);
+            _pending_param_ext_set.valid = false;
+        }
+        // else: leave valid=true, retry next cycle
+    }
+
+    // check for OpenHD GET timeout (3 s); only the matching GCS channel fires it
+    {
+        auto &pg = gcs()._pending_ohd_get;
+        if (pg.active && chan == pg.gcs_chan && (AP_HAL::millis() - pg.sent_ms) > 3000U) {
+            mavlink_msg_command_ack_send(pg.gcs_chan, 65002,
+                MAV_RESULT_FAILED, 0, 0,
+                pg.gcs_sysid, pg.gcs_compid);
+
+            // Throttle repeated GET timeout warnings to keep GCS log readable.
+            static uint32_t last_get_timeout_ms = 0;
+            static char last_get_timeout_param[17] = {};
+            const uint32_t now_ms = AP_HAL::millis();
+            if ((now_ms - last_get_timeout_ms) > 10000U || strncmp(last_get_timeout_param, pg.param_id, 16) != 0) {
+                gcs().send_text(MAV_SEVERITY_WARNING,
+                    "65002 GET %s timeout", pg.param_id);
+                last_get_timeout_ms = now_ms;
+                memset(last_get_timeout_param, 0, sizeof(last_get_timeout_param));
+                memcpy(last_get_timeout_param, pg.param_id, 16);
+            }
+            pg.active = false;
+        }
+    }
+
+    // check for OpenHD SET timeout (5 s); frequency changes can take ~2s on air
+    {
+        auto &ps = gcs()._pending_ohd_set;
+        if (ps.active && chan == ps.gcs_chan && (AP_HAL::millis() - ps.sent_ms) > 5000U) {
+            mavlink_msg_command_ack_send(ps.gcs_chan, 65002,
+                MAV_RESULT_FAILED, 0, 0,
+                ps.gcs_sysid, ps.gcs_compid);
+
+            // Throttle repeated SET timeout warnings to keep GCS log readable.
+            static uint32_t last_set_timeout_ms = 0;
+            static char last_set_timeout_param[17] = {};
+            const uint32_t now_ms = AP_HAL::millis();
+            if ((now_ms - last_set_timeout_ms) > 10000U || strncmp(last_set_timeout_param, ps.param_id, 16) != 0) {
+                gcs().send_text(MAV_SEVERITY_WARNING,
+                    "65002 SET %s timeout", ps.param_id);
+                last_set_timeout_ms = now_ms;
+                memset(last_set_timeout_param, 0, sizeof(last_set_timeout_param));
+                memcpy(last_set_timeout_param, ps.param_id, 16);
+            }
+            ps.active = false;
+        }
+    }
+
 #if HAL_LOGGING_ENABLED
     if (!hal.scheduler->in_delay_callback()) {
         // AP_Logger will not send log data if we are armed.
@@ -3481,27 +3542,20 @@ void GCS_MAVLINK::send_timesync()
 
 void GCS_MAVLINK::handle_statustext(const mavlink_message_t &msg) const
 {
-#if HAL_LOGGING_ENABLED
-    AP_Logger *logger = AP_Logger::get_singleton();
-    if (logger == nullptr) {
-        return;
-    }
-
     mavlink_statustext_t packet;
     mavlink_msg_statustext_decode(&msg, &packet);
 
     const uint8_t text_len = MAVLINK_MSG_STATUSTEXT_FIELD_TEXT_LEN + 1;
-
     char text[text_len] = {0};
-
     memcpy(text, packet.text, MAVLINK_MSG_STATUSTEXT_FIELD_TEXT_LEN);
 
-    logger->Write_Message(text);
-
-    if (msg.sysid == 4 && msg.compid == 52) {
-        gcs().send_text((MAV_SEVERITY)packet.severity, "%s", text);
+#if HAL_LOGGING_ENABLED
+    AP_Logger *logger = AP_Logger::get_singleton();
+    if (logger != nullptr) {
+        logger->Write_Message(text);
     }
 #endif
+
 }
 
 
@@ -3990,6 +4044,60 @@ void GCS_MAVLINK::handle_message(const mavlink_message_t &msg)
     case MAVLINK_MSG_ID_PARAM_REQUEST_READ:
         handle_common_param_message(msg);
         break;
+
+    case MAVLINK_MSG_ID_PARAM_EXT_VALUE: {  // 322 — PARAM_EXT_VALUE reply from OpenHD Air
+        auto &pg = gcs()._pending_ohd_get;
+        if (pg.active && msg.sysid == 101) {
+            mavlink_param_ext_value_t pev;
+            mavlink_msg_param_ext_value_decode(&msg, &pev);
+            char rcv_id[17] = {};
+            memcpy(rcv_id, pev.param_id, 16);
+            if (strncmp(rcv_id, pg.param_id, 16) == 0) {
+                // Decode the 128-byte value buffer as little-endian int32
+                int32_t iVal = 0;
+                memcpy(&iVal, pev.param_value, sizeof(int32_t));
+                gcs().send_text(MAV_SEVERITY_INFO,
+                    "65002 GET %s = %d (from OHD)", pg.param_id, (int)iVal);
+                // Re-send using ArduPilot sysid so that C# GCS accepts it
+                mavlink_msg_param_ext_value_send(pg.gcs_chan,
+                    pev.param_id, pev.param_value,
+                    pev.param_type, pev.param_count, pev.param_index);
+                // Encode the value in result_param2 so C# can read it from ACK alone
+                mavlink_msg_command_ack_send(pg.gcs_chan, 65002,
+                    MAV_RESULT_ACCEPTED, 0, (int32_t)iVal,
+                    pg.gcs_sysid, pg.gcs_compid);
+                pg.active = false;
+            }
+        }
+        break;
+    }
+
+    case MAVLINK_MSG_ID_PARAM_EXT_ACK: {  // 323 — PARAM_EXT_ACK reply from OpenHD after SET
+        auto &ps = gcs()._pending_ohd_set;
+        if (ps.active && msg.sysid == 101) {
+            mavlink_param_ext_ack_t ack;
+            mavlink_msg_param_ext_ack_decode(&msg, &ack);
+            char rcv_id[17] = {};
+            memcpy(rcv_id, ack.param_id, 16);
+            if (strncmp(rcv_id, ps.param_id, 16) == 0) {
+                MAV_RESULT res;
+                if (ack.param_result == PARAM_ACK_ACCEPTED) {
+                    res = MAV_RESULT_ACCEPTED;
+                    gcs().send_text(MAV_SEVERITY_INFO,
+                        "65002 SET %s accepted by OpenHD", ps.param_id);
+                } else {
+                    res = MAV_RESULT_FAILED;
+                    gcs().send_text(MAV_SEVERITY_WARNING,
+                        "65002 SET %s rejected by OpenHD (ack=%u)",
+                        ps.param_id, (unsigned)ack.param_result);
+                }
+                mavlink_msg_command_ack_send(ps.gcs_chan, 65002,
+                    res, 0, 0, ps.gcs_sysid, ps.gcs_compid);
+                ps.active = false;
+            }
+        }
+        break;
+    }
 
 #if AP_AHRS_ENABLED
     case MAVLINK_MSG_ID_SET_GPS_GLOBAL_ORIGIN:
@@ -4965,7 +5073,119 @@ void GCS_MAVLINK::handle_command_long(const mavlink_message_t &msg)
 
     hal.util->persistent_data.last_mavlink_cmd = packet.command;
 
-    const MAV_RESULT result = try_command_long_as_command_int(packet, msg);
+    const bool log_as_command_int = packet.command != 65002;
+    MAV_RESULT result;
+    if (packet.command == 65002) {
+        // Find the GCS MAVLink channel for SERIAL5
+        const uint8_t serial5_chan_idx = gcs().get_channel_from_port_number(5);
+        if (serial5_chan_idx == UINT8_MAX) {
+            gcs().send_text(MAV_SEVERITY_ERROR, "65002: no MAVLink channel on SERIAL5");
+            result = MAV_RESULT_FAILED;
+        } else if (is_equal(packet.param1, 1.0f)) {
+            // sub_cmd=1: WB_FREQUENCY — param2 = freq MHz, INT32 little-endian bytes
+            const int32_t freq_mhz = (int32_t)packet.param2;
+            char param_value[128] = {};
+            memcpy(param_value, &freq_mhz, sizeof(int32_t));
+            char param_id[16] = {};
+            memcpy(param_id, "WB_FREQUENCY", 12);
+            const mavlink_channel_t s5_chan = (mavlink_channel_t)(MAVLINK_COMM_0 + serial5_chan_idx);
+            mavlink_msg_param_ext_set_send(s5_chan, 101, 191, param_id, param_value, MAV_PARAM_EXT_TYPE_INT32);
+
+            auto &ps = gcs()._pending_ohd_set;
+            ps.active = true;
+            memset(ps.param_id, 0, sizeof(ps.param_id));
+            memcpy(ps.param_id, "WB_FREQUENCY", 12);
+            ps.gcs_chan   = chan;
+            ps.gcs_sysid  = msg.sysid;
+            ps.gcs_compid = msg.compid;
+            ps.sent_ms    = AP_HAL::millis();
+            gcs().send_text(MAV_SEVERITY_INFO, "65002/1 sent WB_FREQUENCY=%d -> SERIAL5", (int)freq_mhz);
+            result = MAV_RESULT_IN_PROGRESS;
+        } else if (is_equal(packet.param1, 2.0f)) {
+            // sub_cmd=2: WB_BIND_PHRASE — param2..param7 = 24 bytes of ASCII phrase
+            char param_value[128] = {};
+            memcpy(param_value,      &packet.param2, 4);
+            memcpy(param_value + 4,  &packet.param3, 4);
+            memcpy(param_value + 8,  &packet.param4, 4);
+            memcpy(param_value + 12, &packet.param5, 4);
+            memcpy(param_value + 16, &packet.param6, 4);
+            memcpy(param_value + 20, &packet.param7, 4);
+            char param_id[16] = {};
+            memcpy(param_id, "WB_BIND_PHRASE", 14);
+            const mavlink_channel_t s5_chan = (mavlink_channel_t)(MAVLINK_COMM_0 + serial5_chan_idx);
+            mavlink_msg_param_ext_set_send(s5_chan, 101, 191, param_id, param_value, MAV_PARAM_EXT_TYPE_CUSTOM);
+
+            auto &ps = gcs()._pending_ohd_set;
+            ps.active = true;
+            memset(ps.param_id, 0, sizeof(ps.param_id));
+            memcpy(ps.param_id, "WB_BIND_PHRASE", 14);
+            ps.gcs_chan   = chan;
+            ps.gcs_sysid  = msg.sysid;
+            ps.gcs_compid = msg.compid;
+            ps.sent_ms    = AP_HAL::millis();
+            gcs().send_text(MAV_SEVERITY_INFO, "65002/2 sent WB_BIND_PHRASE='%.24s' -> SERIAL5", param_value);
+            result = MAV_RESULT_IN_PROGRESS;
+        } else if (is_equal(packet.param1, 3.0f)) {
+            // sub_cmd=3: WB_VIDEO_ENCRYPTION — param2: 0=off, 1=on
+            const int32_t enable = (int32_t)packet.param2;
+            char param_value[128] = {};
+            memcpy(param_value, &enable, sizeof(int32_t));
+            char param_id[16] = {};
+            memcpy(param_id, "WB_VIDEO_ENCRYPT", 16);
+            const mavlink_channel_t s5_chan = (mavlink_channel_t)(MAVLINK_COMM_0 + serial5_chan_idx);
+            mavlink_msg_param_ext_set_send(s5_chan, 101, 191, param_id, param_value, MAV_PARAM_EXT_TYPE_INT32);
+
+            auto &ps = gcs()._pending_ohd_set;
+            ps.active = true;
+            memset(ps.param_id, 0, sizeof(ps.param_id));
+            memcpy(ps.param_id, "WB_VIDEO_ENCRYPT", 16);
+            ps.gcs_chan   = chan;
+            ps.gcs_sysid  = msg.sysid;
+            ps.gcs_compid = msg.compid;
+            ps.sent_ms    = AP_HAL::millis();
+            gcs().send_text(MAV_SEVERITY_INFO, "65002/3 sent WB_VIDEO_ENCRYPT=%d -> SERIAL5", (int)enable);
+            result = MAV_RESULT_IN_PROGRESS;
+        } else if (is_equal(packet.param1, 10.0f) || is_equal(packet.param1, 11.0f)) {
+            // sub_cmd=10: GET WB_FREQUENCY,  sub_cmd=11: GET WB_BIND_PHRASE
+            const bool is_freq = is_equal(packet.param1, 10.0f);
+            const char *param_name = is_freq ? "WB_FREQUENCY" : "WB_BIND_PHRASE";
+
+            auto &pg = gcs()._pending_ohd_get;
+            char pid[16] = {};
+            memcpy(pid, param_name, strlen(param_name));
+            const mavlink_channel_t s5_chan = (mavlink_channel_t)(MAVLINK_COMM_0 + serial5_chan_idx);
+            if (pg.active) {
+                // Supersede the previous pending GET (e.g. C# retry before reply arrived).
+                // Resend to OpenHD so the request is not lost, update caller info.
+                gcs().send_text(MAV_SEVERITY_DEBUG, "65002/%d GET %s supersedes pending",
+                                (int)packet.param1, param_name);
+            } else {
+                gcs().send_text(MAV_SEVERITY_DEBUG, "65002/%d GET %s -> SERIAL5",
+                                (int)packet.param1, param_name);
+            }
+            // Send both request types: PARAM_EXT_REQUEST_READ (320) for modern OpenHD
+            // builds, and PARAM_REQUEST_READ (20) for builds that only support
+            // standard params.  We accept both PARAM_EXT_VALUE and PARAM_VALUE
+            // as valid replies below.
+            mavlink_msg_param_ext_request_read_send(s5_chan, 101, 191, pid, -1);
+            mavlink_msg_param_request_read_send(s5_chan, 101, 191, pid, -1);
+
+            pg.active     = true;
+            memset(pg.param_id, 0, sizeof(pg.param_id));
+            memcpy(pg.param_id, param_name, strlen(param_name));
+            pg.gcs_chan    = chan;
+            pg.gcs_sysid   = msg.sysid;
+            pg.gcs_compid  = msg.compid;
+            pg.sent_ms     = AP_HAL::millis();
+
+            result = MAV_RESULT_IN_PROGRESS;
+        } else {
+            gcs().send_text(MAV_SEVERITY_WARNING, "65002 unknown sub_cmd=%.0f", double(packet.param1));
+            result = MAV_RESULT_UNSUPPORTED;
+        }
+    } else {
+        result = try_command_long_as_command_int(packet, msg);
+    }
 
     // send ACK or NAK
     mavlink_msg_command_ack_send(chan, packet.command, result,
@@ -4975,9 +5195,11 @@ void GCS_MAVLINK::handle_command_long(const mavlink_message_t &msg)
 
 #if HAL_LOGGING_ENABLED
     // log the packet:
-    mavlink_command_int_t packet_int;
-    convert_COMMAND_LONG_to_COMMAND_INT(packet, packet_int);
-    AP::logger().Write_Command(packet_int, msg.sysid, msg.compid, result, true);
+    if (log_as_command_int) {
+        mavlink_command_int_t packet_int;
+        convert_COMMAND_LONG_to_COMMAND_INT(packet, packet_int);
+        AP::logger().Write_Command(packet_int, msg.sysid, msg.compid, result, true);
+    }
 #endif
 
     hal.util->persistent_data.last_mavlink_cmd = 0;
@@ -5178,7 +5400,7 @@ MAV_RESULT GCS_MAVLINK::handle_command_int_packet(const mavlink_command_int_t &p
             command[15] = (uint8_t)packet.param4;
 
             // Send to SERIAL9 (id 5)
-            AP_HAL::UARTDriver* uart9 = AP::serialmanager().get_serial_by_id(5);
+            AP_HAL::UARTDriver* uart9 = AP::serialmanager().get_serial_by_id(2);
 
             if (uart9 == nullptr) {
                 gcs().send_text(MAV_SEVERITY_ERROR, "SERIAL is NULL");

@@ -79,7 +79,7 @@
 // mavlink default baud rates and buffer sizes
 #define AP_SERIALMANAGER_MAVLINK_BAUD           57600
 #define AP_SERIALMANAGER_MAVLINK_BUFSIZE_RX     128
-#define AP_SERIALMANAGER_MAVLINK_BUFSIZE_TX     256
+#define AP_SERIALMANAGER_MAVLINK_BUFSIZE_TX     2048
 
 // LTM buffer sizes
 #define AP_SERIALMANAGER_LTM_BUFSIZE_RX         0

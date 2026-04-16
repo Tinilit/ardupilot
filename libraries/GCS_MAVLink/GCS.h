@@ -877,6 +877,16 @@ private:
     // boolean that indicated that message intervals have been set
     // from streamrates:
     bool deferred_messages_initialised;
+
+    // pending PARAM_EXT_SET to inject at start of next update_send()
+    struct {
+        bool valid;
+        uint8_t target_system;
+        uint8_t target_component;
+        char param_id[16];
+        char param_value[128];
+        uint8_t param_type;
+    } _pending_param_ext_set;
 #if HAL_MAVLINK_INTERVALS_FROM_FILES_ENABLED
     // read configuration files from (e.g.) SD and ROMFS, set
     // intervals from same
@@ -1254,6 +1264,37 @@ public:
 #endif // HAL_HIGH_LATENCY2_ENABLED
 
     virtual uint8_t sysid_this_mav() const = 0;
+
+    // pending GET tunnel to OpenHD Air via SERIAL5
+    struct {
+        bool             active;
+        char             param_id[17];   // null-terminated, max 16 chars
+        mavlink_channel_t gcs_chan;
+        uint8_t          gcs_sysid;
+        uint8_t          gcs_compid;
+        uint32_t         sent_ms;
+    } _pending_ohd_get;
+
+    // pending SET tunnel to OpenHD Air via SERIAL5 (waits for PARAM_EXT_ACK)
+    struct {
+        bool             active;
+        char             param_id[17];
+        mavlink_channel_t gcs_chan;
+        uint8_t          gcs_sysid;
+        uint8_t          gcs_compid;
+        uint32_t         sent_ms;
+    } _pending_ohd_set;
+
+    // deferred send queue for Air watchdog commands on SERIAL5
+    // (cross-channel sends from COMMAND_LONG handlers silently fail
+    //  due to per-channel locking, so we queue and send from the
+    //  SERIAL5 channel's own update_send cycle)
+    enum WdCmdType : uint8_t { WD_NONE = 0, WD_GET_ALL, WD_SET, WD_RESTART };
+    struct {
+        WdCmdType type;
+        char   param_id[17];
+        float  value;
+    } _pending_wd_cmd;
 
 protected:
 
