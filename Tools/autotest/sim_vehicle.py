@@ -857,6 +857,16 @@ def start_vehicle(binary, opts, stuff, spawns=None):
     os.chdir(old_dir)
 
 
+def derive_mavproxy_master_from_sitl_args(sitl_instance_args):
+    if not sitl_instance_args:
+        return None
+    import re
+    serial0_match = re.search(r"--serial0(?:=|\s+)([^\s]+)", sitl_instance_args)
+    if serial0_match:
+        return serial0_match.group(1).strip('"')
+    return None
+
+
 def start_mavproxy(opts, stuff):
     """Run mavproxy"""
     # FIXME: would be nice to e.g. "mavproxy.mavproxy(....).run"
@@ -894,10 +904,15 @@ def start_mavproxy(opts, stuff):
                     cmd.extend(["--out", "127.0.0.1:" + str(port)])
 
         if not opts.mcast:
-            if opts.udp:
-                cmd.extend(["--master", ":" + str(5760 + 10 * i)])
-            else:
-                cmd.extend(["--master", "tcp:127.0.0.1:" + str(5760 + 10 * i)])
+            master_arg = getattr(opts, "mavproxy_master", None)
+            if master_arg is None:
+                master_arg = derive_mavproxy_master_from_sitl_args(opts.sitl_instance_args)
+            if master_arg is None:
+                if opts.udp:
+                    master_arg = ":" + str(5760 + 10 * i)
+                else:
+                    master_arg = "tcp:127.0.0.1:" + str(5760 + 10 * i)
+            cmd.extend(["--master", master_arg])
         if stuff["sitl-port"] and not opts.no_rcin:
             cmd.extend(["--sitl", "127.0.0.1:" + str(5501 + 10 * i)])
 

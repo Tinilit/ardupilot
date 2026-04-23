@@ -537,8 +537,12 @@ private:
         uint32_t last_run_ms;
         float pos1_speed_limit;
         bool done_accel_init;
+        enum class VelocityMatchSource : uint8_t { NONE=0, VLA=1, PRECLAND=2 };
+        VelocityMatchSource velocity_match_source{VelocityMatchSource::NONE};
         Vector2f velocity_match;
         uint32_t last_velocity_match_ms;
+        float    heading_match_deg;
+        uint32_t last_heading_match_ms;
         float target_speed;
         float target_accel;
         uint32_t last_pos_reset_ms;

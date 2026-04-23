@@ -1273,6 +1273,10 @@ const AP_Param::GroupInfo ParametersG2::var_info[] = {
     AP_SUBGROUPINFO(precland, "PLND_", 35, ParametersG2, AC_PrecLand),
 #endif
 
+    // @Group: VLA_
+    // @Path: ../libraries/GCS_MAVLink/ViewProLandingController.cpp
+    AP_SUBGROUPINFO(vla_ctrl, "VLA_", 36, ParametersG2, ViewProLandingController),
+
     AP_GROUPEND
 };
 

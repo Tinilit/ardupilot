@@ -48,6 +48,8 @@
 #include <AP_Mount/AP_Mount.h>
 #include <AP_Common/AP_FWVersion.h>
 #include <AP_VisualOdom/AP_VisualOdom.h>
+#include "ViewProCamReader.h"
+#include "ViewProLandingController.h"
 #include <AP_Baro/AP_Baro.h>
 #include <AP_EFI/AP_EFI.h>
 #include <AP_Proximity/AP_Proximity.h>
@@ -2495,6 +2497,16 @@ void GCS::update_receive(void)
     }
     // also update UART pass-thru, if enabled
     update_passthru();
+
+    static ViewProCamReader viewpro_cam;
+    viewpro_cam.update();
+
+    // Instance lives in ParametersG2 (vla_ctrl) so params are registered at boot.
+    // Retrieve via singleton set in the constructor.
+    ViewProLandingController *vla = ViewProLandingController::get_singleton();
+    if (vla != nullptr) {
+        vla->update(viewpro_cam);
+    }
 }
 
 void GCS::send_mission_item_reached_message(uint16_t mission_index)
@@ -4350,7 +4362,7 @@ void GCS_MAVLINK::send_banner()
     // mark the firmware version in the tlog
     const AP_FWVersion &fwver = AP::fwversion();
 
-    send_text(MAV_SEVERITY_INFO, "%s", fwver.fw_string);
+    send_text(MAV_SEVERITY_INFO, "%s ANT GDT 1.0", fwver.fw_string);
 
     if (fwver.middleware_name && fwver.os_name) {
         send_text(MAV_SEVERITY_INFO, "%s: %s %s: %s",
@@ -5165,20 +5177,20 @@ MAV_RESULT GCS_MAVLINK::handle_command_int_packet(const mavlink_command_int_t &p
             command[14] = (uint8_t)packet.param3;
             command[15] = (uint8_t)packet.param4;
 
-            // Send to SERIAL9 (id 5)
-            AP_HAL::UARTDriver* uart9 = AP::serialmanager().get_serial_by_id(5);
+            // Send to SERIAL2 (id 2)
+            AP_HAL::UARTDriver* uart2 = AP::serialmanager().get_serial_by_id(2);
 
-            if (uart9 == nullptr) {
+            if (uart2 == nullptr) {
                 gcs().send_text(MAV_SEVERITY_ERROR, "SERIAL is NULL");
                 return MAV_RESULT_FAILED;
             }
 
-            if (!uart9->is_initialized()) {
+            if (!uart2->is_initialized()) {
                 gcs().send_text(MAV_SEVERITY_ERROR, "SERIAL not initialized");
                 return MAV_RESULT_FAILED;
             }
 
-            size_t bytes_written = uart9->write(command, 16);
+            size_t bytes_written = uart2->write(command, 16);
 
             if (bytes_written == 16) {
                 return MAV_RESULT_ACCEPTED;
@@ -5187,6 +5199,31 @@ MAV_RESULT GCS_MAVLINK::handle_command_int_packet(const mavlink_command_int_t &p
                               (unsigned)bytes_written);
                 return MAV_RESULT_FAILED;
             }
+        }
+
+        case 65001: {
+            // Visual Landing Approach using ViewPro camera tracking.
+            //   param1 > 0 → activate (re-activate if already active), param2 = wind azimuth
+            //   param1 = 0 → deactivate
+            ViewProLandingController *vla = ViewProLandingController::get_singleton();
+            if (vla == nullptr) {
+                return MAV_RESULT_TEMPORARILY_REJECTED;
+            }
+            // Require the vehicle to be armed before activating VLA
+            if (packet.param1 > 0.5f && !hal.util->get_soft_armed()) {
+                gcs().send_text(MAV_SEVERITY_WARNING, "VLA:REJECTED not armed");
+                return MAV_RESULT_DENIED;
+            }
+            if (packet.param1 > 0.5f) {
+                ViewProCamReader *cam = ViewProCamReader::get_singleton();
+                if (cam == nullptr) {
+                    return MAV_RESULT_TEMPORARILY_REJECTED;
+                }
+                vla->activate(packet.param2, *cam);
+            } else {
+                vla->deactivate();
+            }
+            return MAV_RESULT_ACCEPTED;
         }
 
         case MAV_CMD_TOGGLE_ARM_PERMISSION: {
