@@ -61,9 +61,12 @@ private:
     float    _target_bearing_deg   = 0.0f;
     float    _initial_bearing_deg  = 0.0f;  // bearing at lock time (ALIGN/LAND)
     float    _initial_yaw_deg      = 0.0f;  // camera yaw at lock time (ALIGN/LAND)
+    float    _creep_bearing_deg    = 0.0f;  // actual bearing toward target = initial_bearing + initial_yaw
     float    _last_fwd_mps         = 0.0f;  // last commanded ±creep speed m/s, for logging
+    float    _last_lat_mps         = 0.0f;  // last commanded lateral speed m/s, for logging
     float    _into_wind_heading_deg = 0.0f;  // heading to face into wind (azimuth+180)
     bool     _has_wind_heading      = false;
+    bool     _wind_ref_locked       = false; // true after heading is aligned into wind
     uint32_t _last_pitch_gcs_ms  = 0;
     bool     _pitch_lost_holding   = false;  // true while pitch > P_HOLD threshold in ALIGN
     uint32_t _descend_since_ms   = 0;     // first ms when pitch < PITCH_DESCEND_DEG in ALIGN
@@ -82,12 +85,15 @@ private:
     AP_Float pitch_lost_align_deg;// VLA_P_HOLD     default -35
     AP_Float pitch_lost_land_deg; // VLA_P_LAND     default -85
     AP_Float yaw_corr_thresh_deg; // VLA_Y_THRESH   default 5.0
+    AP_Float creep_lat_k;         // VLA_LAT_K      default 0.10
+    AP_Float yaw_align_thresh_deg;// VLA_YAW_ALGN   default 10.0
 
     // non-tunable compile-time constants
     static constexpr float    LOOKAHEAD_M        = 5000.0f;
     static constexpr uint32_t UPDATE_MS          = 150;
     static constexpr uint32_t OVERHEAD_HOLD_MS   = 1500;   // ms at pitch<-80 before ALIGN
     static constexpr uint32_t DESCEND_CONFIRM_MS = 1000;   // ms at pitch<-89 before QLAND
+    static constexpr float    WIND_LOCK_ERR_DEG  = 6.0f;   // heading error threshold to lock yaw baseline
 
     // mode numbers
     static constexpr uint8_t MODE_AUTO    = 10;   // auto mission – resume waypoints
@@ -97,6 +103,6 @@ private:
 
     bool switch_to_mode(uint8_t mode);
     void push_guided_waypoint(float target_bearing_deg);
-    void set_creep_commands(float target_bearing_deg, float pitch_deg);
+    void set_creep_commands(float target_bearing_deg, float pitch_deg, float yaw_delta_deg);
     void command_into_wind_heading(AP_Vehicle *vehicle);
 };
